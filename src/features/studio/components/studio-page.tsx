@@ -414,9 +414,11 @@ export function StudioPage({
         open={studio.createTextDialogOpen}
         title={studio.createTextTitle}
         body={studio.createTextBody}
-        onTitleChange={studio.setCreateTextTitle}
-        onBodyChange={studio.setCreateTextBody}
-        onClose={() => studio.setCreateTextDialogOpen(false)}
+        errorMessage={studio.createTextErrorMessage}
+        saving={studio.createTextSaving}
+        onTitleChange={studio.updateCreateTextTitle}
+        onBodyChange={studio.updateCreateTextBody}
+        onClose={studio.closeCreateTextComposer}
         onSubmit={studio.createTextAsset}
       />
 

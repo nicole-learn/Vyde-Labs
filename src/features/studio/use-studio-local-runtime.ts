@@ -93,6 +93,8 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   const [createTextDialogOpen, setCreateTextDialogOpen] = useState(false);
   const [createTextTitle, setCreateTextTitle] = useState("");
   const [createTextBody, setCreateTextBody] = useState("");
+  const [createTextSaving, setCreateTextSaving] = useState(false);
+  const [createTextErrorMessage, setCreateTextErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     draftsByModelIdRef.current = draftsByModelId;
@@ -709,29 +711,65 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   const openCreateTextComposer = useCallback(() => {
     setCreateTextTitle("");
     setCreateTextBody("");
+    setCreateTextErrorMessage(null);
     setCreateTextDialogOpen(true);
   }, []);
 
   const closeCreateTextComposer = useCallback(() => {
-    setCreateTextDialogOpen(false);
-    setCreateTextTitle("");
-    setCreateTextBody("");
-  }, []);
-
-  const createTextAsset = useCallback(() => {
-    if (!createTextBody.trim()) {
+    if (createTextSaving) {
       return;
     }
 
-    const nextItem = createTextLibraryItem({
-      title: createTextTitle,
-      body: createTextBody,
-      folderId: selectedFolderId,
-    });
+    setCreateTextDialogOpen(false);
+    setCreateTextTitle("");
+    setCreateTextBody("");
+    setCreateTextErrorMessage(null);
+  }, [createTextSaving]);
 
-    setItems((current) => [nextItem, ...current]);
-    closeCreateTextComposer();
-  }, [closeCreateTextComposer, createTextBody, createTextTitle, selectedFolderId]);
+  const updateCreateTextTitle = useCallback((value: string) => {
+    setCreateTextTitle(value);
+    setCreateTextErrorMessage(null);
+  }, []);
+
+  const updateCreateTextBody = useCallback((value: string) => {
+    setCreateTextBody(value);
+    setCreateTextErrorMessage(null);
+  }, []);
+
+  const createTextAsset = useCallback(async () => {
+    if (createTextSaving) {
+      return;
+    }
+
+    const nextBody = createTextBody.trim();
+    if (!nextBody) {
+      setCreateTextErrorMessage("Prompt body is required.");
+      return;
+    }
+
+    setCreateTextSaving(true);
+    setCreateTextErrorMessage(null);
+
+    try {
+      const nextItem = createTextLibraryItem({
+        title: createTextTitle,
+        body: createTextBody,
+        folderId: selectedFolderId,
+      });
+
+      setItems((current) => [nextItem, ...current]);
+      setCreateTextSaving(false);
+      setCreateTextDialogOpen(false);
+      setCreateTextTitle("");
+      setCreateTextBody("");
+      setCreateTextErrorMessage(null);
+    } catch (error) {
+      setCreateTextErrorMessage(
+        error instanceof Error ? error.message : "Failed to create prompt file."
+      );
+      setCreateTextSaving(false);
+    }
+  }, [createTextBody, createTextSaving, createTextTitle, selectedFolderId]);
 
   const generate = useCallback(() => {
     if (!currentDraft.prompt.trim()) {
@@ -855,6 +893,8 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     createTextAsset,
     createTextBody,
     createTextDialogOpen,
+    createTextErrorMessage,
+    createTextSaving,
     createTextTitle,
     currentDraft,
     deleteFolder,
@@ -894,9 +934,9 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     selectedModel,
     selectedModelId,
     selectionModeEnabled,
-    setCreateTextBody,
-    setCreateTextDialogOpen,
-    setCreateTextTitle,
+    closeCreateTextComposer,
+    updateCreateTextBody,
+    updateCreateTextTitle,
     setFolderEditorOpen,
     setFolderEditorValue,
     setGallerySizeLevel,
