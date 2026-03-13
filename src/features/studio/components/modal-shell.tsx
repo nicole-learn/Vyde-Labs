@@ -34,6 +34,11 @@ export function ModalShell({
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const hasExplicitPanelWidth =
+    typeof panelClassName === "string" &&
+    /(^|\s)(max-w-|w-\[|w-(?:\d|full|min|max|screen)|min-w-|min-h-|h-\[)/.test(
+      panelClassName
+    );
 
   useEffect(() => {
     if (!open) return;
@@ -108,7 +113,8 @@ export function ModalShell({
         tabIndex={-1}
         onKeyDown={handlePanelKeyDown}
         className={cn(
-          "w-full max-w-xl rounded-[28px] border border-white/10 bg-background/90 shadow-2xl shadow-black/50 backdrop-blur-2xl",
+          "w-full rounded-[28px] border border-white/10 bg-background/90 shadow-2xl shadow-black/50 backdrop-blur-2xl",
+          hasExplicitPanelWidth ? null : "max-w-xl",
           panelClassName
         )}
       >

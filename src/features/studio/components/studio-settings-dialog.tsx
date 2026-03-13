@@ -400,11 +400,11 @@ export function StudioSettingsDialog({
       open={open}
       title="Settings"
       hideHeader
-      panelClassName="max-w-5xl rounded-[32px]"
+      panelClassName="max-w-[82rem] rounded-[32px]"
       contentClassName="p-0"
       onClose={onClose}
     >
-      <div className="border-b border-white/8 px-6 py-5">
+      <div className="border-b border-white/8 pl-6 pr-4 pt-4 pb-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-3">
             <div className="text-2xl font-semibold tracking-tight text-white">
@@ -449,10 +449,10 @@ export function StudioSettingsDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex size-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/72 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+            className="inline-flex size-9 items-center justify-center self-start rounded-full border border-white/10 bg-white/[0.03] text-white/72 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
             aria-label="Close settings"
           >
-            <X className="size-4" />
+            <X className="size-[18px]" />
           </button>
         </div>
       </div>
