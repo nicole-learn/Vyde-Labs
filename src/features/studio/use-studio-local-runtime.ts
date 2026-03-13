@@ -88,6 +88,7 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     null
   );
   const [folderEditorError, setFolderEditorError] = useState<string | null>(null);
+  const [folderEditorSaving, setFolderEditorSaving] = useState(false);
   const [selectionModeEnabled, setSelectionModeEnabled] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [createTextDialogOpen, setCreateTextDialogOpen] = useState(false);
@@ -447,6 +448,19 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     setFolderEditorError(null);
   }, []);
 
+  const closeFolderEditor = useCallback(() => {
+    if (folderEditorSaving) {
+      return;
+    }
+
+    resetFolderEditor();
+  }, [folderEditorSaving, resetFolderEditor]);
+
+  const updateFolderEditorValue = useCallback((value: string) => {
+    setFolderEditorValue(value);
+    setFolderEditorError(null);
+  }, []);
+
   const openCreateFolder = useCallback(() => {
     setFolderEditorMode("create");
     setFolderEditorTargetId(null);
@@ -469,56 +483,69 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     [folders]
   );
 
-  const saveFolder = useCallback(() => {
-    const nextName = folderEditorValue.trim();
-    if (!nextName) {
-      setFolderEditorError("Folder name is required.");
+  const saveFolder = useCallback(async () => {
+    if (folderEditorSaving) {
       return;
     }
 
-    if (hasFolderNameConflict(folders, nextName, folderEditorTargetId)) {
-      setFolderEditorError("A folder with that name already exists.");
-      return;
-    }
+    setFolderEditorSaving(true);
 
-    if (folderEditorMode === "create") {
-      const createdAt = new Date().toISOString();
-      const nextFolder: StudioFolder = {
-        id: createStudioId("folder"),
-        workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
-        name: nextName,
-        createdAt,
-        updatedAt: createdAt,
-        sortOrder: 0,
-      };
+    try {
+      const nextName = folderEditorValue.trim();
+      if (!nextName) {
+        setFolderEditorError("Folder name is required.");
+        return;
+      }
 
-      setFolders((current) => [
-        {
-          ...nextFolder,
+      if (hasFolderNameConflict(folders, nextName, folderEditorTargetId)) {
+        setFolderEditorError("A folder with that name already exists.");
+        return;
+      }
+
+      if (folderEditorMode === "create") {
+        const createdAt = new Date().toISOString();
+        const nextFolder: StudioFolder = {
+          id: createStudioId("folder"),
+          workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
+          name: nextName,
+          createdAt,
+          updatedAt: createdAt,
           sortOrder: 0,
-        },
-        ...current.map((folder, index) => ({
-          ...folder,
-          sortOrder: index + 1,
-        })),
-      ]);
-      setSelectedFolderId(nextFolder.id);
+        };
+
+        setFolders((current) => [
+          {
+            ...nextFolder,
+            sortOrder: 0,
+          },
+          ...current.map((folder, index) => ({
+            ...folder,
+            sortOrder: index + 1,
+          })),
+        ]);
+        setSelectedFolderId(nextFolder.id);
+        resetFolderEditor();
+        return;
+      }
+
+      if (!folderEditorTargetId) {
+        return;
+      }
+
+      setFolders((current) =>
+        current.map((folder) =>
+          folder.id === folderEditorTargetId
+            ? { ...folder, name: nextName, updatedAt: new Date().toISOString() }
+            : folder
+        )
+      );
       resetFolderEditor();
-      return;
+    } finally {
+      setFolderEditorSaving(false);
     }
-
-    if (!folderEditorTargetId) return;
-
-    setFolders((current) =>
-      current.map((folder) =>
-        folder.id === folderEditorTargetId
-          ? { ...folder, name: nextName, updatedAt: new Date().toISOString() }
-          : folder
-      )
-    );
-    resetFolderEditor();
   }, [
     folderEditorMode,
+    folderEditorSaving,
     folderEditorTargetId,
     folderEditorValue,
     folders,
@@ -940,6 +967,7 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     folderEditorError,
     folderEditorMode,
     folderEditorOpen,
+    folderEditorSaving,
     folderEditorValue,
     folders,
     gallerySizeLevel,
@@ -971,6 +999,7 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     selectedModel,
     selectedModelId,
     selectionModeEnabled,
+    closeFolderEditor,
     closeCreateTextComposer,
     closeUploadDialog,
     toggleUploadDialogFolder,
@@ -979,8 +1008,7 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     uploadDialogOpen,
     updateCreateTextBody,
     updateCreateTextTitle,
-    setFolderEditorOpen,
-    setFolderEditorValue,
+    updateFolderEditorValue,
     setGallerySizeLevel,
     setSelectedFolderId,
     setSelectedModelId,

@@ -379,12 +379,17 @@ export function StudioPage({
 
       <FolderDialog
         errorMessage={studio.folderEditorError}
+        saving={studio.folderEditorSaving}
         open={studio.folderEditorOpen}
         mode={studio.folderEditorMode}
         value={studio.folderEditorValue}
-        onValueChange={studio.setFolderEditorValue}
-        onClose={() => studio.setFolderEditorOpen(false)}
-        onSave={studio.saveFolder}
+        onValueChange={studio.updateFolderEditorValue}
+        onOpenChange={(open) => {
+          if (!open) {
+            studio.closeFolderEditor();
+          }
+        }}
+        onSubmit={studio.saveFolder}
       />
 
       <FolderDeleteDialog
