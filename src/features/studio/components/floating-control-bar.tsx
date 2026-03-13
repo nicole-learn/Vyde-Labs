@@ -11,10 +11,12 @@ import {
   X,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/cn";
@@ -503,6 +505,16 @@ function ReferencePreviewDialog({
   );
 }
 
+function DropErrorToast({ message }: { message: string }) {
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-2 absolute inset-x-0 -top-10 flex justify-center">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive shadow-lg backdrop-blur-sm">
+        {message}
+      </div>
+    </div>
+  );
+}
+
 export function FloatingControlBar({
   draft,
   model,
@@ -517,10 +529,15 @@ export function FloatingControlBar({
 }: FloatingControlBarProps) {
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const dragDepthRef = useRef(0);
+  const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canGenerate = draft.prompt.trim().length > 0;
   const canAddReferences = draft.references.length < 6;
   const hasReferences = draft.references.length > 0;
+  const acceptsDrop = true;
 
   useEffect(() => {
     const textarea = promptRef.current;
@@ -529,6 +546,115 @@ export function FloatingControlBar({
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 320)}px`;
   }, [draft.prompt]);
+
+  useEffect(() => {
+    return () => {
+      if (dropErrorTimerRef.current) {
+        clearTimeout(dropErrorTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showDropError = useCallback((message: string) => {
+    if (dropErrorTimerRef.current) {
+      clearTimeout(dropErrorTimerRef.current);
+    }
+
+    setDropError(message);
+    dropErrorTimerRef.current = setTimeout(() => setDropError(null), 3500);
+  }, []);
+
+  const addDroppedReferenceFiles = useCallback(
+    (files: File[]) => {
+      if (!model.supportsReferences) {
+        return;
+      }
+
+      const remaining = Math.max(0, 6 - draft.references.length);
+      if (remaining <= 0) {
+        showDropError("Maximum 6 reference files reached");
+        return;
+      }
+
+      const compatibleFiles = files.filter(
+        (file) => file.type.startsWith("image/") || file.type.startsWith("video/")
+      );
+
+      if (compatibleFiles.length === 0 && files.length > 0) {
+        showDropError("Only image and video files can be added as references");
+        return;
+      }
+
+      const filesToAdd = compatibleFiles.slice(0, remaining);
+      if (filesToAdd.length < compatibleFiles.length) {
+        showDropError("Maximum 6 reference files reached");
+      }
+
+      if (filesToAdd.length > 0) {
+        onAddReferences(filesToAdd);
+      }
+    },
+    [draft.references.length, model.supportsReferences, onAddReferences, showDropError]
+  );
+
+  const handleDragEnter = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrop) return;
+      event.preventDefault();
+      dragDepthRef.current += 1;
+      if (dragDepthRef.current === 1) {
+        setDragOver(true);
+      }
+    },
+    [acceptsDrop]
+  );
+
+  const handleDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrop) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = model.supportsReferences ? "copy" : "move";
+    },
+    [acceptsDrop, model.supportsReferences]
+  );
+
+  const handleDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrop) return;
+      event.preventDefault();
+      const nextTarget = event.relatedTarget as Node | null;
+      if (nextTarget && event.currentTarget.contains(nextTarget)) {
+        return;
+      }
+
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setDragOver(false);
+      }
+    },
+    [acceptsDrop]
+  );
+
+  const handleDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrop) return;
+      event.preventDefault();
+      dragDepthRef.current = 0;
+      setDragOver(false);
+
+      const droppedFiles = Array.from(event.dataTransfer.files ?? []);
+      if (droppedFiles.length > 0) {
+        addDroppedReferenceFiles(droppedFiles);
+        return;
+      }
+
+      const plainText = event.dataTransfer.getData("text/plain");
+      if (plainText) {
+        onUpdateDraft({ prompt: plainText });
+      }
+    },
+    [acceptsDrop, addDroppedReferenceFiles, onUpdateDraft]
+  );
 
   const settingPills = useMemo<ControlPillConfig[]>(() => {
     const pills: ControlPillConfig[] = [];
@@ -649,8 +775,19 @@ export function FloatingControlBar({
                 backgroundImage:
                   "linear-gradient(170deg, oklch(0.14 0.006 200 / 0.5) 0%, oklch(0.23 0.004 220 / 0.5) 70%, oklch(0.29 0.012 195 / 0.5) 100%)",
               }}
-              className="relative flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-card/90 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+              className={cn(
+                "relative flex min-w-0 flex-1 flex-col rounded-2xl border bg-card/90 backdrop-blur-2xl transition-[border-color,box-shadow] duration-300",
+                dragOver
+                  ? "border-2 border-primary shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_0_1px_color-mix(in_oklch,var(--primary)_35%,transparent)]"
+                  : "border-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+              )}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
             >
+              {dropError ? <DropErrorToast message={dropError} /> : null}
+
               <div className="flex items-stretch">
                 <div className="flex min-w-0 flex-1 flex-col">
                   {hasReferences ? (
@@ -694,7 +831,7 @@ export function FloatingControlBar({
                           onUpdateDraft({ prompt: event.target.value })
                         }
                         placeholder={model.promptPlaceholder ?? "Write your prompt here"}
-                        className="min-h-[1.5rem] max-h-80 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm leading-5 text-foreground shadow-none outline-none"
+                        className="field-sizing-content min-h-[1.5rem] max-h-80 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm leading-5 text-foreground shadow-none outline-none focus-visible:ring-0 dark:bg-transparent"
                         rows={1}
                       />
                     </div>
