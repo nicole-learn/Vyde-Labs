@@ -839,7 +839,7 @@ export function FloatingControlBar({
             <div
               style={{
                 backgroundImage:
-                  "linear-gradient(170deg, oklch(0.14 0.006 200 / 0.5) 0%, oklch(0.23 0.004 220 / 0.5) 70%, oklch(0.29 0.012 195 / 0.5) 100%)",
+                  "linear-gradient(165deg, color-mix(in oklch, var(--primary) 18%, black) 0%, color-mix(in oklch, var(--primary) 10%, black) 54%, color-mix(in oklch, var(--primary) 26%, black) 100%)",
               }}
               className={cn(
                 "relative flex min-w-0 flex-1 flex-col rounded-2xl border bg-card/90 backdrop-blur-2xl transition-[border-color,box-shadow] duration-300",
@@ -928,15 +928,12 @@ export function FloatingControlBar({
                     onClick={onGenerate}
                     style={{
                       background:
-                        "linear-gradient(to bottom, oklch(0.82 0.10 190), oklch(0.65 0.11 190))",
+                        "linear-gradient(180deg, color-mix(in oklch, var(--primary) 78%, white) 0%, color-mix(in oklch, var(--primary) 88%, black) 100%)",
                     }}
-                    className="flex h-[70px] items-center gap-2 rounded-xl px-5 text-base font-semibold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+                    className="flex h-[70px] items-center gap-2 rounded-xl px-5 text-base font-semibold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_26px_color-mix(in_oklch,var(--primary)_18%,transparent)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
                   >
                     <span>Generate</span>
-                    <span className="inline-flex items-center gap-1 text-base">
-                      <Sparkles className="size-4" />
-                      <span>Fal</span>
-                    </span>
+                    <Sparkles className="size-4" />
                   </button>
                 </div>
               </div>
