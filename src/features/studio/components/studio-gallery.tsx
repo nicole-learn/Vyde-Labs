@@ -71,6 +71,7 @@ type GalleryDisplayItem =
 
 const ROW_HEIGHTS = [360, 320, 280, 240, 210, 180, 150];
 const TILE_GAP_PX = 3;
+const GALLERY_EDGE_INSET_PX = TILE_GAP_PX;
 
 interface CardStatusVisual {
   badgeClassName: string;
@@ -548,7 +549,7 @@ export function StudioGallery({
   }, [items, runCards]);
 
   const rows = useMemo(
-    () => buildRows(galleryItems, Math.max(width - 24, 0), sizeLevel),
+    () => buildRows(galleryItems, Math.max(width - GALLERY_EDGE_INSET_PX * 2, 0), sizeLevel),
     [galleryItems, sizeLevel, width]
   );
 
@@ -582,7 +583,12 @@ export function StudioGallery({
     >
       <div
         ref={containerRef}
-        className="stable-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain pb-48 bg-background px-3 pt-3"
+        className="stable-scrollbar min-w-0 flex-1 overflow-y-auto overscroll-contain bg-background pb-48"
+        style={{
+          paddingLeft: GALLERY_EDGE_INSET_PX,
+          paddingRight: GALLERY_EDGE_INSET_PX,
+          paddingTop: GALLERY_EDGE_INSET_PX,
+        }}
       >
         {galleryItems.length === 0 ? (
           <div className="flex min-h-full items-center justify-center bg-background p-6">
