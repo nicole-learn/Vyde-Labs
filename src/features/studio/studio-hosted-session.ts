@@ -26,7 +26,23 @@ export async function getHostedSessionState(): Promise<HostedBrowserSessionState
     throw new Error(error.message);
   }
 
-  return mapHostedSession(session);
+  if (!session?.access_token) {
+    return mapHostedSession(null);
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw new Error(userError.message);
+  }
+
+  return {
+    accessToken: session.access_token,
+    user: user ?? null,
+  };
 }
 
 export async function getHostedAccessToken() {

@@ -50,6 +50,7 @@ export async function createSupabaseRouteHandlerClient() {
 
   return createServerClient<Database>(url, publishableKey, {
     cookies: {
+      encode: "tokens-only",
       getAll() {
         return cookieStore.getAll();
       },
