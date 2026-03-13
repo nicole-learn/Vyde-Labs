@@ -34,10 +34,7 @@ export function StudioPage({
   const emptyDragImageRef = useRef<HTMLDivElement | null>(null);
   const { appMode, canSwitchModes, setAppMode } = useStudioAppMode();
   const studio = useStudioRuntime(appMode);
-  const [isDesktopViewport, setIsDesktopViewport] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia(XL_BREAKPOINT_QUERY).matches;
-  });
+  const [isDesktopViewport, setIsDesktopViewport] = useState(true);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [folderDeleteTargetId, setFolderDeleteTargetId] = useState<string | null>(
     null

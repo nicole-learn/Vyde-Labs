@@ -12,6 +12,28 @@ import type {
 } from "./types";
 
 export const LOCAL_STUDIO_WORKSPACE_ID = "workspace-local";
+const SEED_BASE_TIMESTAMP = "2026-03-13T18:00:00.000Z";
+const SEED_FOLDER_IDS = {
+  references: "folder-references",
+  prompts: "folder-prompts",
+  concepts: "folder-concepts",
+} as const;
+const SEED_RUN_IDS = {
+  completedImage: "run-completed-image",
+  completedVideo: "run-completed-video",
+  completedText: "run-completed-text",
+  queuedImage: "run-queued-image",
+  processingVideo: "run-processing-video",
+  failedText: "run-failed-text",
+} as const;
+const SEED_ASSET_IDS = {
+  generatedImage: "asset-generated-image",
+  generatedVideo: "asset-generated-video",
+  generatedText: "asset-generated-text",
+  uploadedImage: "asset-uploaded-image",
+  uploadedVideo: "asset-uploaded-video",
+  uploadedText: "asset-uploaded-text",
+} as const;
 
 export function createStudioId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -106,6 +128,7 @@ function parseAspectRatioValue(value: string): number {
 }
 
 export function createGeneratedLibraryItem(params: {
+  id?: string;
   model: StudioModelDefinition;
   draft: StudioDraft;
   createdAt: string;
@@ -123,7 +146,7 @@ export function createGeneratedLibraryItem(params: {
     ].join(" ");
 
     return {
-      id: createStudioId("asset"),
+      id: params.id ?? createStudioId("asset"),
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       title,
       kind: "text",
@@ -158,7 +181,7 @@ export function createGeneratedLibraryItem(params: {
   });
 
   return {
-    id: createStudioId("asset"),
+    id: params.id ?? createStudioId("asset"),
     workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
     title,
     kind: params.model.kind,
@@ -218,11 +241,11 @@ export function createGenerationRunPreviewUrl(
   });
 }
 
-function createSeedFolders() {
-  const now = new Date().toISOString();
+function createSeedFolders(): StudioFolder[] {
+  const now = SEED_BASE_TIMESTAMP;
   return [
     {
-      id: createStudioId("folder"),
+      id: SEED_FOLDER_IDS.references,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       name: "References",
       createdAt: now,
@@ -230,7 +253,7 @@ function createSeedFolders() {
       sortOrder: 0,
     },
     {
-      id: createStudioId("folder"),
+      id: SEED_FOLDER_IDS.prompts,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       name: "Prompts",
       createdAt: now,
@@ -238,17 +261,18 @@ function createSeedFolders() {
       sortOrder: 1,
     },
     {
-      id: createStudioId("folder"),
+      id: SEED_FOLDER_IDS.concepts,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       name: "Concepts",
       createdAt: now,
       updatedAt: now,
       sortOrder: 2,
     },
-  ] satisfies StudioFolder[];
+  ];
 }
 
 function createMockUploadedSeedItem(params: {
+  id: string;
   title: string;
   prompt: string;
   kind: "image" | "video" | "text";
@@ -269,7 +293,7 @@ function createMockUploadedSeedItem(params: {
         });
 
   return {
-    id: createStudioId("asset"),
+    id: params.id,
     workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
     title: params.title,
     kind: params.kind,
@@ -307,6 +331,7 @@ function createMockUploadedSeedItem(params: {
 }
 
 function createMockGenerationRun(params: {
+  id?: string;
   createdAt: string;
   draft: StudioDraft;
   errorMessage?: string | null;
@@ -316,7 +341,7 @@ function createMockGenerationRun(params: {
   status: GenerationRun["status"];
 }) {
   return {
-    id: createStudioId("run"),
+    id: params.id ?? createStudioId("run"),
     workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
     folderId: params.folderId,
     modelId: params.model.id,
@@ -352,12 +377,15 @@ export function buildStudioDraftMap() {
   ) as Record<string, StudioDraft>;
 }
 
-export function createStudioSeedState() {
+export function createStudioSeedState(): {
+  folders: StudioFolder[];
+  items: LibraryItem[];
+  runs: GenerationRun[];
+} {
   const folders = createSeedFolders();
   const imageModel = getStudioModelById("nano-banana-2");
   const videoModel = getStudioModelById("veo-3.1");
   const textModel = getStudioModelById("gemini-flash");
-  const now = Date.now();
 
   const imageDraft = {
     ...createDraft(imageModel),
@@ -375,44 +403,44 @@ export function createStudioSeedState() {
   };
 
   const createdAt = [
-    new Date(now - 1000 * 60 * 14).toISOString(),
-    new Date(now - 1000 * 60 * 41).toISOString(),
-    new Date(now - 1000 * 60 * 75).toISOString(),
-    new Date(now - 1000 * 60 * 92).toISOString(),
-    new Date(now - 1000 * 60 * 128).toISOString(),
-    new Date(now - 1000 * 60 * 172).toISOString(),
-    new Date(now - 1000 * 60 * 4).toISOString(),
-    new Date(now - 1000 * 60 * 7).toISOString(),
-    new Date(now - 1000 * 60 * 9).toISOString(),
+    "2026-03-13T17:46:00.000Z",
+    "2026-03-13T17:19:00.000Z",
+    "2026-03-13T16:45:00.000Z",
+    "2026-03-13T16:28:00.000Z",
+    "2026-03-13T15:52:00.000Z",
+    "2026-03-13T15:08:00.000Z",
+    "2026-03-13T17:56:00.000Z",
+    "2026-03-13T17:53:00.000Z",
+    "2026-03-13T17:51:00.000Z",
   ];
-
-  const completedImageRunId = createStudioId("run");
-  const completedVideoRunId = createStudioId("run");
-  const completedTextRunId = createStudioId("run");
 
   const items = [
     createGeneratedLibraryItem({
+      id: SEED_ASSET_IDS.generatedImage,
       model: imageModel,
       draft: imageDraft,
       createdAt: createdAt[0],
       folderId: folders[0].id,
-      runId: completedImageRunId,
+      runId: SEED_RUN_IDS.completedImage,
     }),
     createGeneratedLibraryItem({
+      id: SEED_ASSET_IDS.generatedVideo,
       model: videoModel,
       draft: videoDraft,
       createdAt: createdAt[1],
       folderId: folders[1].id,
-      runId: completedVideoRunId,
+      runId: SEED_RUN_IDS.completedVideo,
     }),
     createGeneratedLibraryItem({
+      id: SEED_ASSET_IDS.generatedText,
       model: textModel,
       draft: textDraft,
       createdAt: createdAt[2],
       folderId: folders[2].id,
-      runId: completedTextRunId,
+      runId: SEED_RUN_IDS.completedText,
     }),
     createMockUploadedSeedItem({
+      id: SEED_ASSET_IDS.uploadedImage,
       title: "Desk composition reference",
       prompt: "Warm editorial workspace with layered wood tones and late-afternoon window light",
       kind: "image",
@@ -420,6 +448,7 @@ export function createStudioSeedState() {
       folderId: folders[0].id,
     }),
     createMockUploadedSeedItem({
+      id: SEED_ASSET_IDS.uploadedVideo,
       title: "Camera move study",
       prompt: "Slow dolly across a tabletop scene with shallow depth and reflective highlights",
       kind: "video",
@@ -427,6 +456,7 @@ export function createStudioSeedState() {
       folderId: null,
     }),
     createMockUploadedSeedItem({
+      id: SEED_ASSET_IDS.uploadedText,
       title: "Prompt draft",
       prompt:
         "Turn the desk scene into three visual directions: luxury editorial, quiet productivity, and cinematic twilight.",
@@ -438,7 +468,7 @@ export function createStudioSeedState() {
 
   const runs: GenerationRun[] = [
     {
-      id: completedImageRunId,
+      id: SEED_RUN_IDS.completedImage,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       folderId: folders[0].id,
       modelId: imageModel.id,
@@ -459,7 +489,7 @@ export function createStudioSeedState() {
       draftSnapshot: createDraftSnapshot(imageDraft),
     },
     {
-      id: completedVideoRunId,
+      id: SEED_RUN_IDS.completedVideo,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       folderId: folders[1].id,
       modelId: videoModel.id,
@@ -480,7 +510,7 @@ export function createStudioSeedState() {
       draftSnapshot: createDraftSnapshot(videoDraft),
     },
     {
-      id: completedTextRunId,
+      id: SEED_RUN_IDS.completedText,
       workspaceId: LOCAL_STUDIO_WORKSPACE_ID,
       folderId: folders[2].id,
       modelId: textModel.id,
@@ -501,6 +531,7 @@ export function createStudioSeedState() {
       draftSnapshot: createDraftSnapshot(textDraft),
     },
     createMockGenerationRun({
+      id: SEED_RUN_IDS.queuedImage,
       createdAt: createdAt[6],
       draft: {
         ...createDraft(imageModel),
@@ -512,6 +543,7 @@ export function createStudioSeedState() {
       status: "queued",
     }),
     createMockGenerationRun({
+      id: SEED_RUN_IDS.processingVideo,
       createdAt: createdAt[7],
       draft: {
         ...createDraft(videoModel),
@@ -523,6 +555,7 @@ export function createStudioSeedState() {
       status: "processing",
     }),
     createMockGenerationRun({
+      id: SEED_RUN_IDS.failedText,
       createdAt: createdAt[8],
       draft: {
         ...createDraft(textModel),

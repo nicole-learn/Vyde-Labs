@@ -62,6 +62,7 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   const previewUrlsRef = useRef(new Map<string, string>());
   const pendingTimersRef = useRef<number[]>([]);
   const draftsByModelIdRef = useRef(buildStudioDraftMap());
+  const storageHydratedRef = useRef(false);
 
   const [models] = useState(STUDIO_MODEL_CATALOG);
   const [selectedModelId, setSelectedModelId] = useState(
@@ -72,12 +73,10 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   const [items, setItems] = useState(initialStudioState.items);
   const [runs, setRuns] = useState(initialStudioState.runs);
   const [draftsByModelId, setDraftsByModelId] = useState(buildStudioDraftMap);
-  const [gallerySizeLevel, setGallerySizeLevelState] = useState(
-    () => loadStoredGridDensity() ?? 2
-  );
-  const [providerSettings, setProviderSettings] = useState<StudioProviderSettings>(
-    () => loadStoredProviderSettings() ?? { falApiKey: "" }
-  );
+  const [gallerySizeLevel, setGallerySizeLevelState] = useState(2);
+  const [providerSettings, setProviderSettings] = useState<StudioProviderSettings>({
+    falApiKey: "",
+  });
   const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
   const [folderEditorOpen, setFolderEditorOpen] = useState(false);
   const [folderEditorMode, setFolderEditorMode] = useState<"create" | "rename">(
@@ -105,6 +104,25 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   }, [draftsByModelId]);
 
   useEffect(() => {
+    const storedGridDensity = loadStoredGridDensity();
+    const storedProviderSettings = loadStoredProviderSettings();
+
+    if (storedGridDensity !== null) {
+      setGallerySizeLevelState(storedGridDensity);
+    }
+
+    if (storedProviderSettings) {
+      setProviderSettings(storedProviderSettings);
+    }
+
+    storageHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!storageHydratedRef.current) {
+      return;
+    }
+
     saveStoredGridDensity(gallerySizeLevel);
   }, [gallerySizeLevel]);
 
@@ -114,6 +132,10 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
   }, []);
 
   useEffect(() => {
+    if (!storageHydratedRef.current) {
+      return;
+    }
+
     saveStoredProviderSettings(providerSettings);
   }, [providerSettings]);
 
