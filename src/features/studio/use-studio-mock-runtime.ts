@@ -21,10 +21,8 @@ import {
   createStudioId,
   createStudioSeedSnapshot,
   HOSTED_STUDIO_WORKSPACE_ID,
-  HOSTED_STUDIO_USER_ID,
   hydrateDraft,
   LOCAL_STUDIO_WORKSPACE_ID,
-  LOCAL_STUDIO_USER_ID,
   toPersistedDraft,
 } from "./studio-local-runtime-data";
 import {
@@ -49,6 +47,10 @@ import {
   STUDIO_MODEL_SECTIONS,
   getStudioModelById,
 } from "./studio-model-catalog";
+import type {
+  HostedStudioMutation,
+  HostedStudioSnapshotResponse,
+} from "./studio-hosted-mock-api";
 import type {
   DraftReference,
   GenerationRun,
@@ -76,10 +78,6 @@ const EMPTY_PROVIDER_SETTINGS: StudioProviderSettings = {
 
 function getWorkspaceIdForMode(mode: StudioAppMode) {
   return mode === "hosted" ? HOSTED_STUDIO_WORKSPACE_ID : LOCAL_STUDIO_WORKSPACE_ID;
-}
-
-function getUserIdForMode(mode: StudioAppMode) {
-  return mode === "hosted" ? HOSTED_STUDIO_USER_ID : LOCAL_STUDIO_USER_ID;
 }
 
 function createEmptyDraftReferenceMap() {
@@ -208,6 +206,65 @@ function buildWorkspaceSnapshot(params: {
   } satisfies StudioWorkspaceSnapshot;
 }
 
+async function fetchHostedSnapshot() {
+  const response = await fetch("/api/mock/studio/hosted", {
+    method: "GET",
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as HostedStudioSnapshotResponse & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not load hosted mock state.");
+  }
+
+  return payload.snapshot;
+}
+
+async function mutateHostedSnapshot(mutation: HostedStudioMutation) {
+  const response = await fetch("/api/mock/studio/hosted", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(mutation),
+  });
+  const payload = (await response.json()) as HostedStudioSnapshotResponse & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Hosted mock mutation failed.");
+  }
+
+  return payload.snapshot;
+}
+
+async function uploadHostedFiles(files: File[], folderId: string | null) {
+  const formData = new FormData();
+  if (folderId) {
+    formData.set("folderId", folderId);
+  }
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch("/api/mock/studio/hosted/uploads", {
+    method: "POST",
+    body: formData,
+  });
+  const payload = (await response.json()) as HostedStudioSnapshotResponse & {
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Hosted mock upload failed.");
+  }
+
+  return payload.snapshot;
+}
+
 export function useStudioMockRuntime(appMode: StudioAppMode) {
   const seedSnapshot = useMemo(() => createStudioSeedSnapshot(appMode), [appMode]);
   const previewUrlsRef = useRef(new Map<string, string>());
@@ -268,6 +325,27 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const [queueLimitDialogOpen, setQueueLimitDialogOpen] = useState(false);
   const [purchaseCreditsPending, setPurchaseCreditsPending] = useState(false);
 
+  const applySnapshot = useCallback(
+    (nextSnapshot: StudioWorkspaceSnapshot, options?: { preserveDrafts?: boolean }) => {
+      setProfile(nextSnapshot.profile);
+      setCreditBalance(nextSnapshot.creditBalance);
+      setActiveCreditPack(nextSnapshot.activeCreditPack);
+      setQueueSettings(nextSnapshot.queueSettings);
+      setFolders(nextSnapshot.folders);
+      setFolderItems(nextSnapshot.folderItems);
+      setRunFiles(nextSnapshot.runFiles);
+      setRuns(nextSnapshot.generationRuns);
+      setItems(nextSnapshot.libraryItems);
+
+      if (!options?.preserveDrafts) {
+        setDraftsByModelId(nextSnapshot.draftsByModelId);
+        setSelectedModelIdState(nextSnapshot.selectedModelId);
+        setGallerySizeLevelState(nextSnapshot.gallerySizeLevel);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     runsRef.current = runs;
   }, [runs]);
@@ -318,42 +396,59 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     cleanupPreviewUrls();
     cleanupDraftReferences();
 
-    const nextSnapshot = loadStoredWorkspaceSnapshot(appMode) ?? seedSnapshot;
-    const nextProviderSettings =
-      appMode === "local"
-        ? loadStoredProviderSettings() ?? nextSnapshot.providerSettings
-        : EMPTY_PROVIDER_SETTINGS;
+    const resetUiState = () => {
+      setProviderSettings(EMPTY_PROVIDER_SETTINGS);
+      setProviderConnectionStatus("idle");
+      setSelectedFolderId(null);
+      setSelectionModeEnabled(false);
+      setSelectedItemIds([]);
+      setFolderEditorOpen(false);
+      setFolderEditorError(null);
+      setFolderEditorTargetId(null);
+      setFolderEditorValue("");
+      setCreateTextDialogOpen(false);
+      setCreateTextTitle("");
+      setCreateTextBody("");
+      setCreateTextErrorMessage(null);
+      setUploadDialogOpen(false);
+      setUploadDialogFolderId(null);
+      setQueueLimitDialogOpen(false);
+      setDraftReferencesByModelId(createEmptyDraftReferenceMap());
+    };
 
-    setProfile(nextSnapshot.profile);
-    setCreditBalance(nextSnapshot.creditBalance);
-    setActiveCreditPack(nextSnapshot.activeCreditPack);
-    setQueueSettings(nextSnapshot.queueSettings);
-    setSelectedModelIdState(nextSnapshot.selectedModelId);
-    setFolders(nextSnapshot.folders);
-    setFolderItems(nextSnapshot.folderItems);
-    setRunFiles(nextSnapshot.runFiles);
-    setRuns(nextSnapshot.generationRuns);
-    setDraftsByModelId(nextSnapshot.draftsByModelId);
-    setGallerySizeLevelState(nextSnapshot.gallerySizeLevel);
+    resetUiState();
+
+    if (appMode === "hosted") {
+      void fetchHostedSnapshot()
+        .then((nextSnapshot) => {
+          if (cancelled) {
+            return;
+          }
+
+          applySnapshot(nextSnapshot);
+          storageHydratedRef.current = true;
+        })
+        .catch(() => {
+          if (cancelled) {
+            return;
+          }
+
+          applySnapshot(seedSnapshot);
+          storageHydratedRef.current = true;
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const nextSnapshot = loadStoredWorkspaceSnapshot(appMode) ?? seedSnapshot;
+    const nextProviderSettings = loadStoredProviderSettings() ?? nextSnapshot.providerSettings;
+
+    applySnapshot(nextSnapshot);
     setProviderSettings(nextProviderSettings);
-    setProviderConnectionStatus(
-      nextProviderSettings.falApiKey ? "connected" : "idle"
-    );
+    setProviderConnectionStatus(nextProviderSettings.falApiKey ? "connected" : "idle");
     setSelectedFolderId(null);
-    setSelectionModeEnabled(false);
-    setSelectedItemIds([]);
-    setFolderEditorOpen(false);
-    setFolderEditorError(null);
-    setFolderEditorTargetId(null);
-    setFolderEditorValue("");
-    setCreateTextDialogOpen(false);
-    setCreateTextTitle("");
-    setCreateTextBody("");
-    setCreateTextErrorMessage(null);
-    setUploadDialogOpen(false);
-    setUploadDialogFolderId(null);
-    setQueueLimitDialogOpen(false);
-    setDraftReferencesByModelId(createEmptyDraftReferenceMap());
 
     void hydrateUploadedPreviewUrls(nextSnapshot.libraryItems, previewUrlsRef.current).then(
       (hydratedItems) => {
@@ -379,10 +474,17 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     return () => {
       cancelled = true;
     };
-  }, [appMode, cleanupDraftReferences, cleanupPreviewUrls, clearAllTimers, seedSnapshot]);
+  }, [
+    appMode,
+    applySnapshot,
+    cleanupDraftReferences,
+    cleanupPreviewUrls,
+    clearAllTimers,
+    seedSnapshot,
+  ]);
 
   useEffect(() => {
-    if (!storageHydratedRef.current) {
+    if (!storageHydratedRef.current || appMode !== "local") {
       return;
     }
 
@@ -428,6 +530,24 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
     saveStoredProviderSettings(providerSettings);
   }, [appMode, providerSettings]);
+
+  useEffect(() => {
+    if (appMode !== "hosted" || !storageHydratedRef.current) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchHostedSnapshot()
+        .then((nextSnapshot) => {
+          applySnapshot(nextSnapshot, { preserveDrafts: true });
+        })
+        .catch(() => {
+          // Keep the last known hosted mock state if polling fails.
+        });
+    }, 1200);
+
+    return () => window.clearInterval(intervalId);
+  }, [appMode, applySnapshot]);
 
   const scheduleDispatchAttempt = useCallback(
     (runId: string, delayMs: number) => {
@@ -631,6 +751,11 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   );
 
   useEffect(() => {
+    if (appMode === "hosted") {
+      clearAllTimers();
+      return;
+    }
+
     const activeRunIds = new Set(
       runs
         .filter((run) => run.status === "queued" || run.status === "pending")
@@ -662,7 +787,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         scheduleRunCompletion(run);
       }
     }
-  }, [runs, scheduleDispatchAttempt, scheduleRunCompletion]);
+  }, [appMode, clearAllTimers, runs, scheduleDispatchAttempt, scheduleRunCompletion]);
 
   const selectedModel = useMemo(
     () => models.find((model) => model.id === selectedModelId) ?? models[0],
@@ -739,6 +864,24 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const selectedItemCount = selectedItemIds.length;
   const hasFalKey = providerSettings.falApiKey.trim().length > 0;
   const maxReferenceFiles = selectedModel.maxReferenceFiles ?? 6;
+
+  const applyHostedMutation = useCallback(
+    async (mutation: HostedStudioMutation) => {
+      const nextSnapshot = await mutateHostedSnapshot(mutation);
+      applySnapshot(nextSnapshot, { preserveDrafts: true });
+      return nextSnapshot;
+    },
+    [applySnapshot]
+  );
+
+  const applyHostedUpload = useCallback(
+    async (files: File[], folderId: string | null) => {
+      const nextSnapshot = await uploadHostedFiles(files, folderId);
+      applySnapshot(nextSnapshot, { preserveDrafts: true });
+      return nextSnapshot;
+    },
+    [applySnapshot]
+  );
 
   const hostedAccount = useMemo(() => {
     if (appMode !== "hosted" || !creditBalance || !activeCreditPack) {
@@ -994,6 +1137,15 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       return;
     }
 
+    if (appMode === "hosted") {
+      void applyHostedMutation({
+        action: "move_items",
+        itemIds,
+        folderId,
+      });
+      return;
+    }
+
     const itemIdSet = new Set(itemIds);
     const updatedAt = new Date().toISOString();
 
@@ -1027,10 +1179,21 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         ...remaining,
       ];
     });
-  }, []);
+  }, [appMode, applyHostedMutation]);
 
   const deleteItems = useCallback((itemIds: string[]) => {
     if (itemIds.length === 0) return;
+
+    if (appMode === "hosted") {
+      void applyHostedMutation({
+        action: "delete_items",
+        itemIds,
+      });
+      setSelectedItemIds((current) =>
+        current.filter((itemId) => !itemIds.includes(itemId))
+      );
+      return;
+    }
 
     const itemIdSet = new Set(itemIds);
     const itemsToDelete = items.filter((item) => itemIdSet.has(item.id));
@@ -1062,7 +1225,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     setSelectedItemIds((current) =>
       current.filter((itemId) => !itemIdSet.has(itemId))
     );
-  }, [items]);
+  }, [appMode, applyHostedMutation, items]);
 
   const deleteItem = useCallback(
     (itemId: string) => {
@@ -1136,6 +1299,24 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         return;
       }
 
+      if (appMode === "hosted") {
+        if (folderEditorMode === "create") {
+          await applyHostedMutation({
+            action: "create_folder",
+            name: nextName,
+          });
+        } else if (folderEditorTargetId) {
+          await applyHostedMutation({
+            action: "rename_folder",
+            folderId: folderEditorTargetId,
+            name: nextName,
+          });
+        }
+
+        resetFolderEditor();
+        return;
+      }
+
       if (folderEditorMode === "create") {
         const createdAt = new Date().toISOString();
         const nextFolder: StudioFolder = {
@@ -1182,11 +1363,21 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     folderEditorTargetId,
     folderEditorValue,
     folders,
+    applyHostedMutation,
     profile.id,
     resetFolderEditor,
   ]);
 
   const deleteFolder = useCallback((folderId: string) => {
+    if (appMode === "hosted") {
+      void applyHostedMutation({
+        action: "delete_folder",
+        folderId,
+      });
+      setSelectedFolderId((current) => (current === folderId ? null : current));
+      return;
+    }
+
     setFolders((current) =>
       current
         .filter((folder) => folder.id !== folderId)
@@ -1216,7 +1407,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       )
     );
     setSelectedFolderId((current) => (current === folderId ? null : current));
-  }, []);
+  }, [appMode, applyHostedMutation]);
 
   const reuseRun = useCallback(
     (runId: string) => {
@@ -1276,6 +1467,16 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
   const updateTextItem = useCallback(
     (itemId: string, patch: { title?: string; contentText?: string }) => {
+      if (appMode === "hosted") {
+        void applyHostedMutation({
+          action: "update_text_item",
+          itemId,
+          title: patch.title,
+          contentText: patch.contentText,
+        });
+        return;
+      }
+
       setItems((current) =>
         current.map((item) => {
           if (item.id !== itemId || item.kind !== "text") {
@@ -1295,7 +1496,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         })
       );
     },
-    []
+    [appMode, applyHostedMutation]
   );
 
   const openCreateTextComposer = useCallback(() => {
@@ -1341,6 +1542,21 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     setCreateTextErrorMessage(null);
 
     try {
+      if (appMode === "hosted") {
+        await applyHostedMutation({
+          action: "create_text_item",
+          title: createTextTitle,
+          body: createTextBody,
+          folderId: selectedFolderId,
+        });
+        setCreateTextSaving(false);
+        setCreateTextDialogOpen(false);
+        setCreateTextTitle("");
+        setCreateTextBody("");
+        setCreateTextErrorMessage(null);
+        return;
+      }
+
       const nextItem = createTextLibraryItem({
         userId: profile.id,
         workspaceId: getWorkspaceIdForMode(appMode),
@@ -1371,7 +1587,15 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       );
       setCreateTextSaving(false);
     }
-  }, [appMode, createTextBody, createTextSaving, createTextTitle, profile.id, selectedFolderId]);
+  }, [
+    appMode,
+    applyHostedMutation,
+    createTextBody,
+    createTextSaving,
+    createTextTitle,
+    profile.id,
+    selectedFolderId,
+  ]);
 
   const openUploadDialog = useCallback(() => {
     if (uploadAssetsLoading) {
@@ -1402,6 +1626,12 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
       setUploadAssetsLoading(true);
       try {
+        if (appMode === "hosted") {
+          await applyHostedUpload(files, folderIdOverride ?? selectedFolderId);
+          setUploadDialogOpen(false);
+          return;
+        }
+
         const createdEntriesResult = await Promise.all(
           files.map((file) =>
             createUploadedRunFileAndLibraryItem({
@@ -1456,7 +1686,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         setUploadAssetsLoading(false);
       }
     },
-    [appMode, profile.id, selectedFolderId, uploadAssetsLoading]
+    [appMode, applyHostedUpload, profile.id, selectedFolderId, uploadAssetsLoading]
   );
 
   const saveProviderSettings = useCallback(
@@ -1498,7 +1728,14 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       if (!targetRun || (targetRun.status !== "queued" && targetRun.status !== "pending")) {
         return;
       }
-      const heldCredits = targetRun.estimatedCredits ?? 0;
+
+      if (appMode === "hosted") {
+        void applyHostedMutation({
+          action: "cancel_run",
+          runId,
+        });
+        return;
+      }
 
       const queuedTimerId = dispatchTimersRef.current.get(runId);
       if (queuedTimerId) {
@@ -1522,20 +1759,8 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
             : entry
         )
       );
-
-      if (appMode === "hosted" && heldCredits > 0) {
-        setCreditBalance((current) =>
-          current
-            ? {
-                ...current,
-                balanceCredits: current.balanceCredits + heldCredits,
-                updatedAt: cancelledAt,
-              }
-            : current
-        );
-      }
     },
-    [appMode]
+    [appMode, applyHostedMutation]
   );
 
   const purchaseHostedCredits = useCallback(async () => {
@@ -1544,17 +1769,14 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     }
 
     setPurchaseCreditsPending(true);
-    const updatedAt = new Date().toISOString();
-
-    await new Promise((resolve) => window.setTimeout(resolve, 450));
-
-    setCreditBalance((current) => ({
-      userId: getUserIdForMode("hosted"),
-      balanceCredits: (current?.balanceCredits ?? 0) + activeCreditPack.credits,
-      updatedAt,
-    }));
-    setPurchaseCreditsPending(false);
-  }, [activeCreditPack, appMode]);
+    try {
+      await applyHostedMutation({
+        action: "purchase_credits",
+      });
+    } finally {
+      setPurchaseCreditsPending(false);
+    }
+  }, [activeCreditPack, appMode, applyHostedMutation]);
 
   const setGallerySizeLevel = useCallback((value: number) => {
     const nextValue = Math.min(Math.max(Math.round(value), 0), 6);
@@ -1575,6 +1797,24 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       return;
     }
 
+    if (appMode === "hosted") {
+      void applyHostedMutation({
+        action: "generate",
+        modelId: selectedModel.id,
+        folderId: selectedFolderId,
+        draft: createDraftSnapshot(currentDraft),
+      }).catch((error) => {
+        if (
+          error instanceof Error &&
+          error.message ===
+            "limit of 100 concurrent queues/ generations reached, please wait for your generations to finish before continuing."
+        ) {
+          setQueueLimitDialogOpen(true);
+        }
+      });
+      return;
+    }
+
     const activeJobCount = runsRef.current.filter((run) =>
       run.status === "queued" || run.status === "pending" || run.status === "processing"
     ).length;
@@ -1584,9 +1824,6 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     }
 
     const estimatedCredits = quoteCredits(selectedModel.id, currentDraft);
-    if (appMode === "hosted" && creditBalance && creditBalance.balanceCredits < estimatedCredits) {
-      return;
-    }
 
     const createdAt = new Date().toISOString();
     const runId = createStudioId("run");
@@ -1652,21 +1889,9 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     };
 
     setRuns((current) => [nextRun, ...current]);
-
-    if (appMode === "hosted" && creditBalance) {
-      setCreditBalance((current) =>
-        current
-          ? {
-              ...current,
-              balanceCredits: current.balanceCredits - estimatedCredits,
-              updatedAt: createdAt,
-            }
-          : current
-      );
-    }
   }, [
     appMode,
-    creditBalance,
+    applyHostedMutation,
     currentDraft,
     hasFalKey,
     profile.id,
