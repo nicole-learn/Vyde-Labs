@@ -1,5 +1,6 @@
 export type StudioModelKind = "image" | "video" | "text" | "audio";
 export type StudioModelSection = "images" | "videos" | "text" | "audio";
+export type StudioCreditPurchaseAmount = 10 | 100;
 export type StudioRunStatus =
   | "pending"
   | "queued"
@@ -38,6 +39,36 @@ export type StudioProviderConnectionStatus =
   | "connected"
   | "invalid";
 
+export interface StudioVideoRateCard {
+  withoutAudio: number;
+  withAudio: number;
+}
+
+export type StudioModelPricing =
+  | {
+      type: "fixed";
+      apiCostUsd: number;
+    }
+  | {
+      type: "resolution";
+      baseCostUsd: number;
+      resolutionMultipliers: Record<string, number>;
+    }
+  | {
+      type: "video";
+      resolutionRates: Record<string, StudioVideoRateCard>;
+      defaultResolution: string;
+    }
+  | {
+      type: "tts";
+      apiCostUsdPerThousandCharacters: number;
+    }
+  | {
+      type: "llm";
+      apiCostUsdPerMillionInputTokens: number;
+      apiCostUsdPerMillionOutputTokens: number;
+    };
+
 export interface StudioModelDefinition {
   id: string;
   name: string;
@@ -48,7 +79,6 @@ export interface StudioModelDefinition {
   heroGradient: string;
   tags: string[];
   requestMode: StudioGenerationRequestMode;
-  visibleInPromptBar?: boolean;
   requiresPrompt?: boolean;
   promptPlaceholder: string;
   supportsNegativePrompt: boolean;
@@ -68,6 +98,7 @@ export interface StudioModelDefinition {
   durationOptions?: number[];
   toneOptions?: string[];
   maxTokenOptions?: number[];
+  pricing: StudioModelPricing;
   defaultDraft: Omit<StudioDraft, "references" | "startFrame" | "endFrame">;
 }
 
@@ -265,12 +296,17 @@ export interface StudioQueueSettings {
 export interface StudioHostedAccount {
   profile: StudioProfile;
   creditBalance: StudioCreditBalance;
-  activeCreditPack: StudioCreditPack;
+  activeCreditPack: StudioCreditPack | null;
   queuedCount: number;
   generatingCount: number;
   completedCount: number;
   pricingSummary: string;
   environmentLabel: string;
+}
+
+export interface StudioModelConfiguration {
+  enabledModelIds: string[];
+  updatedAt: string;
 }
 
 export interface StudioProviderSettings {
@@ -288,6 +324,7 @@ export interface StudioWorkspaceDomainState {
   profile: StudioProfile;
   creditBalance: StudioCreditBalance | null;
   activeCreditPack: StudioCreditPack | null;
+  modelConfiguration: StudioModelConfiguration;
   queueSettings: StudioQueueSettings;
   folders: StudioFolder[];
   folderItems: StudioFolderItem[];

@@ -409,6 +409,20 @@ export function FloatingControlBar({
       });
     }
 
+    if (model.maxTokenOptions) {
+      pills.push({
+        id: "max-tokens",
+        label: "Max Tokens",
+        value: `${draft.maxTokens}`,
+        options: model.maxTokenOptions.map((option) => ({
+          value: `${option}`,
+          label: option.toLocaleString(),
+        })),
+        onValueChange: (value) =>
+          onUpdateDraft({ maxTokens: Number(value) }),
+      });
+    }
+
     if (model.kind === "video" && model.durationOptions) {
       if (model.supportsFrameInputs && model.supportsReferences) {
         pills.push({
@@ -457,6 +471,7 @@ export function FloatingControlBar({
     draft.durationSeconds,
     draft.includeAudio,
     draft.language,
+    draft.maxTokens,
     draft.outputFormat,
     draft.resolution,
     draft.speakingRate,

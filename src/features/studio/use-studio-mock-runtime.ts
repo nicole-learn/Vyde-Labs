@@ -15,11 +15,16 @@ import {
   canGenerateWithDraft,
   getStudioConcurrencyLimitForMode,
   getStudioRunCompletionDelayMs,
-  quoteStudioDraftCredits,
   resolveStudioGenerationRequestMode,
   shouldStudioMockRunFail,
 } from "./studio-generation-rules";
 import { reorderStudioFoldersByIds, sortStudioFoldersByOrder } from "./studio-folder-order";
+import {
+  getConfiguredStudioModels,
+  normalizeStudioEnabledModelIds,
+  resolveConfiguredStudioModelId,
+  toggleStudioModelEnabled,
+} from "./studio-model-configuration";
 import {
   buildStudioDraftMap,
   createDraft,
@@ -59,7 +64,6 @@ import {
 import {
   STUDIO_MODEL_CATALOG,
   STUDIO_MODEL_SECTIONS,
-  STUDIO_VISIBLE_MODEL_CATALOG,
   getStudioModelById,
 } from "./studio-model-catalog";
 import type {
@@ -67,16 +71,19 @@ import type {
   HostedStudioSnapshotResponse,
   HostedStudioUploadManifestEntry,
 } from "./studio-hosted-mock-api";
+import { quoteStudioDraftPricing } from "./studio-model-pricing";
 import { getStudioUploadedMediaKind, studioUploadSupportsAlpha } from "./studio-upload-files";
 import type {
   DraftReference,
   GenerationRun,
   LibraryItem,
   PersistedStudioDraft,
+  StudioCreditPurchaseAmount,
   StudioDraft,
   StudioFolder,
   StudioFolderEditorMode,
   StudioHostedAccount,
+  StudioModelConfiguration,
   StudioProviderConnectionStatus,
   StudioProviderSaveResult,
   StudioProviderSettings,
@@ -274,10 +281,12 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const hostedLatestAppliedRequestRef = useRef(0);
   const hostedRequestControllersRef = useRef(new Set<AbortController>());
 
-  const [models] = useState(STUDIO_VISIBLE_MODEL_CATALOG);
   const [profile, setProfile] = useState(seedSnapshot.profile);
   const [creditBalance, setCreditBalance] = useState(seedSnapshot.creditBalance);
   const [activeCreditPack, setActiveCreditPack] = useState(seedSnapshot.activeCreditPack);
+  const [modelConfiguration, setModelConfiguration] = useState<StudioModelConfiguration>(
+    seedSnapshot.modelConfiguration
+  );
   const [queueSettings, setQueueSettings] = useState(seedSnapshot.queueSettings);
   const [selectedModelId, setSelectedModelIdState] = useState(seedSnapshot.selectedModelId);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -299,7 +308,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const [providerSettings, setProviderSettings] = useState<StudioProviderSettings>(
     EMPTY_PROVIDER_SETTINGS
   );
-  const [providerSettingsOpen, setProviderSettingsOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [providerConnectionStatus, setProviderConnectionStatus] =
     useState<StudioProviderConnectionStatus>("idle");
   const [folderEditorOpen, setFolderEditorOpen] = useState(false);
@@ -327,12 +336,26 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const [uploadAssetsLoading, setUploadAssetsLoading] = useState(false);
   const [queueLimitDialogOpen, setQueueLimitDialogOpen] = useState(false);
   const [purchaseCreditsPending, setPurchaseCreditsPending] = useState(false);
+  const normalizedEnabledModelIds = useMemo(
+    () => normalizeStudioEnabledModelIds(modelConfiguration.enabledModelIds),
+    [modelConfiguration.enabledModelIds]
+  );
+  const models = useMemo(
+    () => getConfiguredStudioModels(normalizedEnabledModelIds),
+    [normalizedEnabledModelIds]
+  );
 
   const applySnapshot = useCallback(
     (nextSnapshot: StudioWorkspaceSnapshot, options?: { preserveDrafts?: boolean }) => {
       setProfile(nextSnapshot.profile);
       setCreditBalance(nextSnapshot.creditBalance);
       setActiveCreditPack(nextSnapshot.activeCreditPack);
+      setModelConfiguration({
+        ...nextSnapshot.modelConfiguration,
+        enabledModelIds: normalizeStudioEnabledModelIds(
+          nextSnapshot.modelConfiguration.enabledModelIds
+        ),
+      });
       setQueueSettings(nextSnapshot.queueSettings);
       setFolders(sortStudioFoldersByOrder(nextSnapshot.folders));
       setFolderItems(nextSnapshot.folderItems);
@@ -355,25 +378,21 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
   const getVisibleModelId = useCallback(
     (modelId: string) => {
-      if (models.some((model) => model.id === modelId)) {
-        return modelId;
-      }
-
-      const modelDefinition = getStudioModelById(modelId);
-      return (
-        models.find(
-          (model) =>
-            model.section === modelDefinition.section &&
-            model.kind === modelDefinition.kind
-        )?.id ??
-        models[0]?.id ??
-        modelId
-      );
+      return resolveConfiguredStudioModelId({
+        currentModelId: modelId,
+        enabledModelIds: normalizedEnabledModelIds,
+      });
     },
-    [models]
+    [normalizedEnabledModelIds]
   );
 
   const visibleSelectedModelId = getVisibleModelId(selectedModelId);
+
+  useEffect(() => {
+    if (selectedModelId !== visibleSelectedModelId) {
+      setSelectedModelIdState(visibleSelectedModelId);
+    }
+  }, [selectedModelId, visibleSelectedModelId]);
 
   useEffect(() => {
     draftReferencesRef.current = draftReferencesByModelId;
@@ -487,6 +506,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     const resetUiState = () => {
       setProviderSettings(EMPTY_PROVIDER_SETTINGS);
       setProviderConnectionStatus("idle");
+      setSettingsDialogOpen(false);
       setSelectedFolderId(null);
       setSelectionModeEnabled(false);
       setSelectedItemIds([]);
@@ -602,6 +622,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       folderItems,
       gallerySizeLevel,
       items,
+      modelConfiguration,
       profile,
       providerSettings,
       queueSettings,
@@ -620,6 +641,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     folders,
     gallerySizeLevel,
     items,
+    modelConfiguration,
     profile,
     providerSettings,
     queueSettings,
@@ -822,6 +844,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
                 updatedAt: completedAt,
                 providerStatus: "completed",
                 outputAssetId: nextItem.id,
+                actualCostUsd: entry.estimatedCostUsd,
                 actualCredits: entry.estimatedCredits,
                 outputText: nextItem.kind === "text" ? nextItem.contentText : null,
                 canCancel: false,
@@ -1032,7 +1055,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   );
 
   const hostedAccount = useMemo(() => {
-    if (appMode !== "hosted" || !creditBalance || !activeCreditPack) {
+    if (appMode !== "hosted" || !creditBalance) {
       return null;
     }
 
@@ -1043,13 +1066,71 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       queuedCount: runs.filter((run) => run.status === "queued").length,
       generatingCount: runs.filter((run) => run.status === "processing").length,
       completedCount: runs.filter((run) => run.status === "completed").length,
-      pricingSummary: "Fal market rate + 25%",
+      pricingSummary: "Fal market rate + 15%",
       environmentLabel: "Hosted preview",
     } satisfies StudioHostedAccount;
   }, [activeCreditPack, appMode, creditBalance, profile, runs]);
 
   const accountButtonLabel =
     appMode === "hosted" ? profile.avatarLabel || "U" : "T";
+
+  const updateModelConfiguration = useCallback(
+    (enabledModelIds: string[]) => {
+      const nextEnabledModelIds = normalizeStudioEnabledModelIds(enabledModelIds);
+      const updatedAt = new Date().toISOString();
+
+      if (appMode === "hosted") {
+        setModelConfiguration({
+          enabledModelIds: nextEnabledModelIds,
+          updatedAt,
+        });
+        void applyHostedMutation({
+          action: "set_enabled_models",
+          enabledModelIds: nextEnabledModelIds,
+        }).catch(() => {
+          const request = beginHostedRequest();
+
+          void fetchHostedSnapshot(request.controller.signal)
+            .then((nextSnapshot) => {
+              finishHostedRequest(request.controller);
+              applyHostedResponse(nextSnapshot, {
+                preserveDrafts: true,
+                requestId: request.requestId,
+                sessionId: request.sessionId,
+              });
+            })
+            .catch(() => {
+              finishHostedRequest(request.controller);
+            });
+        });
+        return;
+      }
+
+      setModelConfiguration({
+        enabledModelIds: nextEnabledModelIds,
+        updatedAt,
+      });
+    },
+    [
+      appMode,
+      applyHostedMutation,
+      applyHostedResponse,
+      beginHostedRequest,
+      finishHostedRequest,
+    ]
+  );
+
+  const toggleModelEnabled = useCallback(
+    (modelId: string) => {
+      updateModelConfiguration(
+        toggleStudioModelEnabled({
+          enabledModelIds: normalizedEnabledModelIds,
+          modelId,
+        })
+      );
+    },
+    [normalizedEnabledModelIds, updateModelConfiguration]
+  );
 
   const clearSelection = useCallback(() => {
     setSelectedItemIds([]);
@@ -1304,7 +1385,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       if (hasTextItems) {
         return droppedItems.length > 1
           ? "Drop to merge into the prompt"
-          : "Drop to use as prompt";
+          : "Drop to merge into the prompt";
       }
 
       if (hasReferenceItems) {
@@ -2166,8 +2247,8 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     [appMode, applyHostedMutation]
   );
 
-  const purchaseHostedCredits = useCallback(async () => {
-    if (appMode !== "hosted" || !activeCreditPack) {
+  const purchaseHostedCredits = useCallback(async (credits: StudioCreditPurchaseAmount) => {
+    if (appMode !== "hosted") {
       return;
     }
 
@@ -2175,11 +2256,34 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     try {
       await applyHostedMutation({
         action: "purchase_credits",
+        credits,
       });
     } finally {
       setPurchaseCreditsPending(false);
     }
-  }, [activeCreditPack, appMode, applyHostedMutation]);
+  }, [appMode, applyHostedMutation]);
+
+  const signOutHostedAccount = useCallback(async () => {
+    if (appMode !== "hosted") {
+      return;
+    }
+
+    await applyHostedMutation({
+      action: "sign_out",
+    });
+    setSettingsDialogOpen(false);
+  }, [appMode, applyHostedMutation]);
+
+  const deleteHostedAccount = useCallback(async () => {
+    if (appMode !== "hosted") {
+      return;
+    }
+
+    await applyHostedMutation({
+      action: "delete_account",
+    });
+    setSettingsDialogOpen(false);
+  }, [appMode, applyHostedMutation]);
 
   const setGallerySizeLevel = useCallback((value: number) => {
     const nextValue = Math.min(Math.max(Math.round(value), 0), 6);
@@ -2196,7 +2300,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     }
 
     if (appMode === "local" && !hasFalKey) {
-      setProviderSettingsOpen(true);
+      setSettingsDialogOpen(true);
       return;
     }
 
@@ -2226,7 +2330,8 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       return;
     }
 
-    const estimatedCredits = quoteStudioDraftCredits(selectedModel.id, currentDraft);
+    const pricingQuote = quoteStudioDraftPricing(selectedModel, currentDraft);
+    const estimatedCredits = pricingQuote.billedCredits;
     const requestMode = resolveStudioGenerationRequestMode(selectedModel, currentDraft);
 
     const createdAt = new Date().toISOString();
@@ -2282,15 +2387,13 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       },
       providerRequestId: null,
       providerStatus: "queued",
-      estimatedCostUsd: null,
+      estimatedCostUsd: pricingQuote.apiCostUsd,
       actualCostUsd: null,
       estimatedCredits,
       actualCredits: null,
       usageSnapshot: {},
       outputText: null,
-      pricingSnapshot: {
-        estimated_credits: estimatedCredits,
-      },
+      pricingSnapshot: pricingQuote.pricingSnapshot,
       dispatchAttemptCount: 0,
       dispatchLeaseExpiresAt: null,
       canCancel: true,
@@ -2344,6 +2447,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     hasFalKey,
     hostedAccount,
     items,
+    modelConfiguration,
     modelSections: STUDIO_MODEL_SECTIONS,
     models,
     moveItemsToFolder,
@@ -2353,7 +2457,6 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     openUploadDialog,
     providerConnectionStatus,
     providerSettings,
-    providerSettingsOpen,
     purchaseCreditsPending,
     purchaseHostedCredits,
     queueLimitDialogOpen,
@@ -2372,9 +2475,10 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     selectedModel,
     selectedModelId: visibleSelectedModelId,
     selectionModeEnabled,
+    settingsDialogOpen,
     setEndFrame: (file: File) => setFrameInput("end", file),
     setGallerySizeLevel,
-    setProviderSettingsOpen,
+    setSettingsDialogOpen,
     setSelectedFolderId,
     setSelectedModelId,
     setStartFrame: (file: File) => setFrameInput("start", file),
@@ -2387,6 +2491,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     dropLibraryItemsIntoStartFrame: (itemIds: string[]) =>
       setFrameFromLibraryItems(itemIds, "start"),
     toggleItemSelection,
+    toggleModelEnabled,
     toggleSelectionMode,
     ungroupedItems,
     ungroupedRunCards,
@@ -2394,10 +2499,13 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     updateCreateTextTitle,
     updateDraft,
     updateFolderEditorValue,
+    updateModelConfiguration,
     updateTextItem,
     uploadAssetsLoading,
     uploadDialogFolderId,
     uploadDialogOpen,
     uploadFiles,
+    deleteHostedAccount,
+    signOutHostedAccount,
   };
 }

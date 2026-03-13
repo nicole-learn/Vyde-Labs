@@ -1,5 +1,6 @@
 import { loadUploadedAssetFile } from "./studio-browser-storage";
 import { createAudioThumbnailUrl } from "./studio-asset-thumbnails";
+import { STUDIO_STATE_SCHEMA_VERSION } from "./studio-local-runtime-data";
 import type {
   GenerationRun,
   LibraryItem,
@@ -8,6 +9,7 @@ import type {
   StudioCreditPack,
   StudioFolder,
   StudioFolderItem,
+  StudioModelConfiguration,
   StudioProfile,
   StudioProviderSettings,
   StudioQueueSettings,
@@ -75,6 +77,7 @@ interface BuildStudioWorkspaceSnapshotParams {
   folderItems: StudioFolderItem[];
   gallerySizeLevel: number;
   items: LibraryItem[];
+  modelConfiguration: StudioModelConfiguration;
   profile: StudioProfile;
   providerSettings: StudioProviderSettings;
   queueSettings: StudioQueueSettings;
@@ -87,12 +90,13 @@ export function buildStudioWorkspaceSnapshot(
   params: BuildStudioWorkspaceSnapshotParams
 ) {
   return {
-    schemaVersion: 4,
+    schemaVersion: STUDIO_STATE_SCHEMA_VERSION,
     mode: params.appMode,
     profile: params.profile,
     providerSettings: params.providerSettings,
     creditBalance: params.creditBalance,
     activeCreditPack: params.activeCreditPack,
+    modelConfiguration: params.modelConfiguration,
     queueSettings: params.queueSettings,
     folders: params.folders,
     folderItems: params.folderItems,

@@ -17,7 +17,7 @@ export function StudioAccountButton({
 }: StudioAccountButtonProps) {
   const isHostedMode = appMode === "hosted";
   const buttonLabel = isHostedMode ? hostedLabel : "T";
-  const buttonTitle = isHostedMode ? "Account" : "Provider settings";
+  const buttonTitle = isHostedMode ? "Account settings" : "Settings";
 
   return (
     <button

@@ -1,5 +1,6 @@
 "use client";
 
+import { STUDIO_STATE_SCHEMA_VERSION } from "./studio-local-runtime-data";
 import type { StudioProviderSettings, StudioWorkspaceSnapshot } from "./types";
 
 const STORAGE_KEYS = {
@@ -126,10 +127,16 @@ export function saveStoredProviderSettings(value: StudioProviderSettings) {
 }
 
 export function loadStoredWorkspaceSnapshot(mode: "local" | "hosted") {
-  return readJson<StudioWorkspaceSnapshot>(
+  const snapshot = readJson<StudioWorkspaceSnapshot>(
     getLocalStorage(),
     getSnapshotStorageKey(mode)
   );
+
+  if (!snapshot || snapshot.schemaVersion !== STUDIO_STATE_SCHEMA_VERSION) {
+    return null;
+  }
+
+  return snapshot;
 }
 
 export function saveStoredWorkspaceSnapshot(

@@ -4,6 +4,7 @@ import {
   STUDIO_MODEL_CATALOG,
   getStudioModelById,
 } from "./studio-model-catalog";
+import { createDefaultStudioEnabledModelIds } from "./studio-model-configuration";
 import {
   createMediaMetadataFromAspectRatioLabel,
   formatAspectRatioLabel,
@@ -33,7 +34,7 @@ export const LOCAL_STUDIO_WORKSPACE_ID = "workspace-local";
 export const HOSTED_STUDIO_WORKSPACE_ID = "workspace-hosted";
 export const LOCAL_STUDIO_USER_ID = "user-local";
 export const HOSTED_STUDIO_USER_ID = "user-hosted";
-export const STUDIO_STATE_SCHEMA_VERSION = 4;
+export const STUDIO_STATE_SCHEMA_VERSION = 5;
 
 const MOCK_MEDIA = {
   generatedImage: {
@@ -295,10 +296,9 @@ function getMimeTypeFromPreviewUrl(params: {
 }
 
 function getGeneratedAudioMedia(params: {
-  modelId: string;
   outputFormat: string;
 }) {
-  if (params.modelId === "orpheus-tts") {
+  if (params.outputFormat === "wav") {
     return MOCK_MEDIA.generatedAudioWav;
   }
 
@@ -350,7 +350,7 @@ function createCreditBalance(mode: StudioAppMode): StudioCreditBalance | null {
 
   return {
     userId: HOSTED_STUDIO_USER_ID,
-    balanceCredits: 300,
+    balanceCredits: 420,
     updatedAt: SEED_BASE_TIMESTAMP,
   };
 }
@@ -363,7 +363,7 @@ function createActiveCreditPack(mode: StudioAppMode): StudioCreditPack | null {
   return {
     id: "credit-pack-100",
     credits: 100,
-    priceCents: 1000,
+    priceCents: 100,
     currency: "usd",
     isActive: true,
     displayOrder: 0,
@@ -536,7 +536,6 @@ export function createGeneratedLibraryItem(params: {
   const defaultGeneratedMedia =
     params.model.kind === "audio"
       ? getGeneratedAudioMedia({
-          modelId: params.model.id,
           outputFormat: params.draft.outputFormat,
         })
       : params.model.requestMode === "background-removal"
@@ -977,10 +976,10 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
   const userId = getUserId(mode);
   const workspaceId = getWorkspaceId(mode);
   const imageModel = getStudioModelById("nano-banana-2");
-  const backgroundRemovalModel = getStudioModelById("bria-background-remove");
+  const backgroundRemovalModel = getStudioModelById("bria-rmbg-2");
   const videoModel = getStudioModelById("veo-3.1");
   const audioModel = getStudioModelById("minimax-speech-2.8-hd");
-  const textModel = getStudioModelById("gemini-flash");
+  const textModel = getStudioModelById("gemini-2.5-flash");
 
   const imageDraft = {
     ...createDraft(imageModel),
@@ -1391,6 +1390,10 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
     },
     creditBalance: createCreditBalance(mode),
     activeCreditPack: createActiveCreditPack(mode),
+    modelConfiguration: {
+      enabledModelIds: createDefaultStudioEnabledModelIds(),
+      updatedAt: SEED_BASE_TIMESTAMP,
+    },
     queueSettings: getDefaultQueueSettings(mode),
     folders,
     folderItems: createFolderMemberships(items),
@@ -1398,7 +1401,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
     libraryItems: items,
     generationRuns: runs,
     draftsByModelId: buildStudioDraftMap(),
-    selectedModelId: STUDIO_MODEL_CATALOG[0].id,
+    selectedModelId: "nano-banana-2",
     gallerySizeLevel: 2,
   };
 }

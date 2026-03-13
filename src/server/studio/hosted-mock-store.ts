@@ -11,12 +11,14 @@ import {
 } from "@/features/studio/studio-local-runtime-data";
 import { createAudioThumbnailUrl } from "@/features/studio/studio-asset-thumbnails";
 import {
-  getHostedStudioFairShare,
   getStudioRunCompletionDelayMs,
-  quoteStudioDraftCredits,
+  getHostedStudioFairShare,
   resolveStudioGenerationRequestMode,
   shouldStudioMockRunFail,
 } from "@/features/studio/studio-generation-rules";
+import {
+  normalizeStudioEnabledModelIds,
+} from "@/features/studio/studio-model-configuration";
 import {
   reorderStudioFoldersByIds,
 } from "@/features/studio/studio-folder-order";
@@ -25,6 +27,7 @@ import type {
   HostedStudioMutation,
   HostedStudioUploadManifestEntry,
 } from "@/features/studio/studio-hosted-mock-api";
+import { quoteStudioDraftPricing } from "@/features/studio/studio-model-pricing";
 import {
   getStudioUploadedMediaKind,
   studioUploadSupportsAlpha,
@@ -156,6 +159,20 @@ function getStore(): HostedMockStore {
   return globalStore[STORE_KEY]!;
 }
 
+function resetHostedMockStore(store: HostedMockStore) {
+  for (const timer of store.dispatchTimers.values()) {
+    clearTimer(timer);
+  }
+  for (const timer of store.completionTimers.values()) {
+    clearTimer(timer);
+  }
+
+  store.dispatchTimers.clear();
+  store.completionTimers.clear();
+  store.files.clear();
+  store.snapshot = createStudioSeedSnapshot("hosted");
+}
+
 function syncFolderMemberships(snapshot: StudioWorkspaceSnapshot) {
   snapshot.folderItems = snapshot.libraryItems.flatMap((item) =>
     item.folderIds.map((folderId) => ({
@@ -278,6 +295,7 @@ function scheduleCompletion(store: HostedMockStore, runId: string) {
     latestRun.status = "completed";
     latestRun.providerStatus = "completed";
     latestRun.outputAssetId = nextItem.id;
+    latestRun.actualCostUsd = latestRun.estimatedCostUsd;
     latestRun.actualCredits = latestRun.estimatedCredits;
     latestRun.completedAt = finishedAt;
     latestRun.updatedAt = finishedAt;
@@ -340,10 +358,30 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
 
   switch (mutation.action) {
     case "purchase_credits": {
-      if (snapshot.activeCreditPack && snapshot.creditBalance) {
-        snapshot.creditBalance.balanceCredits += snapshot.activeCreditPack.credits;
+      if (snapshot.creditBalance) {
+        snapshot.creditBalance.balanceCredits += mutation.credits;
         snapshot.creditBalance.updatedAt = new Date().toISOString();
       }
+      if (snapshot.activeCreditPack) {
+        snapshot.activeCreditPack = {
+          ...snapshot.activeCreditPack,
+          credits: mutation.credits,
+          priceCents: mutation.credits,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      break;
+    }
+    case "set_enabled_models": {
+      snapshot.modelConfiguration = {
+        enabledModelIds: normalizeStudioEnabledModelIds(mutation.enabledModelIds),
+        updatedAt: new Date().toISOString(),
+      };
+      break;
+    }
+    case "sign_out":
+    case "delete_account": {
+      resetHostedMockStore(store);
       break;
     }
     case "create_folder": {
@@ -502,6 +540,13 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
       break;
     }
     case "generate": {
+      const enabledModelIds = normalizeStudioEnabledModelIds(
+        snapshot.modelConfiguration.enabledModelIds
+      );
+      if (!enabledModelIds.includes(mutation.modelId)) {
+        throw new Error("That model is disabled for this workspace.");
+      }
+
       const activeJobs = snapshot.generationRuns.filter(
         (run) => run.status === "queued" || run.status === "pending" || run.status === "processing"
       ).length;
@@ -524,7 +569,8 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         "startFrameCount" in mutation.draft ? mutation.draft.startFrameCount : 0;
       const endFrameCount =
         "endFrameCount" in mutation.draft ? mutation.draft.endFrameCount : 0;
-      const estimatedCredits = quoteStudioDraftCredits(model.id, persistedDraft);
+      const pricingQuote = quoteStudioDraftPricing(model, persistedDraft);
+      const estimatedCredits = pricingQuote.billedCredits;
       if (
         snapshot.creditBalance &&
         snapshot.creditBalance.balanceCredits < estimatedCredits
@@ -573,15 +619,13 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         },
         providerRequestId: null,
         providerStatus: "queued",
-        estimatedCostUsd: null,
+        estimatedCostUsd: pricingQuote.apiCostUsd,
         actualCostUsd: null,
         estimatedCredits,
         actualCredits: null,
         usageSnapshot: {},
         outputText: null,
-        pricingSnapshot: {
-          estimated_credits: estimatedCredits,
-        },
+        pricingSnapshot: pricingQuote.pricingSnapshot,
         dispatchAttemptCount: 0,
         dispatchLeaseExpiresAt: null,
         canCancel: true,
@@ -624,7 +668,7 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
   }
 
   syncHostedQueue(store);
-  return cloneSnapshot(snapshot);
+  return cloneSnapshot(store.snapshot);
 }
 
 export async function uploadHostedMockFiles(params: {

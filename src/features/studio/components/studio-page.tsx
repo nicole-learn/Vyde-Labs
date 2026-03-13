@@ -7,13 +7,12 @@ import { FloatingControlBar } from "./floating-control-bar";
 import { FolderDeleteDialog } from "./folder-delete-dialog";
 import { FolderDialog } from "./folder-dialog";
 import { FolderSidebar } from "./folder-sidebar";
-import { HostedAccountDialog } from "./hosted-account-dialog";
-import { ProviderSettingsDialog } from "./provider-settings-dialog";
 import { QueueLimitDialog } from "./queue-limit-dialog";
 import { StudioDevModeOverlay } from "./studio-dev-mode-overlay";
 import { StudioDragPreviewOverlay } from "./studio-drag-preview-overlay";
 import { StudioGallery } from "./studio-gallery";
 import { StudioMobileRail } from "./studio-mobile-rail";
+import { StudioSettingsDialog } from "./studio-settings-dialog";
 import { StudioTopBar } from "./studio-top-bar";
 import { UploadFilesDialog } from "./upload-files-dialog";
 import { StudioWorkspaceShell } from "./studio-workspace-shell";
@@ -40,7 +39,6 @@ export function StudioPage({
   const [folderDeleteTargetId, setFolderDeleteTargetId] = useState<string | null>(
     null
   );
-  const [hostedAccountOpen, setHostedAccountOpen] = useState(false);
   const [dragPreview, setDragPreview] = useState<{
     count: number;
     itemIds: string[];
@@ -159,18 +157,13 @@ export function StudioPage({
   );
 
   const handleAppModeChange = (nextMode: "local" | "hosted") => {
-    setHostedAccountOpen(false);
+    studio.setSettingsDialogOpen(false);
     setAppMode(nextMode);
   };
   const showDevModeToggle = canSwitchModes && !hideDevModeToggle;
 
   const openAccountSurface = () => {
-    if (appMode === "hosted") {
-      setHostedAccountOpen(true);
-      return;
-    }
-
-    studio.setProviderSettingsOpen(true);
+    studio.setSettingsDialogOpen(true);
   };
 
   const downloadItem = (item: LibraryItem) => {
@@ -401,21 +394,21 @@ export function StudioPage({
         />
       ) : null}
 
-      {appMode === "local" ? (
-        <ProviderSettingsDialog
-          open={studio.providerSettingsOpen}
-          initialValues={studio.providerSettings}
-          onClose={() => studio.setProviderSettingsOpen(false)}
-          onSave={studio.saveProviderSettings}
-        />
-      ) : null}
-
-      <HostedAccountDialog
-        account={studio.hostedAccount}
-        open={appMode === "hosted" && hostedAccountOpen}
+      <StudioSettingsDialog
+        key={`${appMode}:${studio.settingsDialogOpen ? "open" : "closed"}`}
+        appMode={appMode}
+        hostedAccount={studio.hostedAccount}
+        modelConfiguration={studio.modelConfiguration}
+        open={studio.settingsDialogOpen}
+        providerConnectionStatus={studio.providerConnectionStatus}
+        providerSettings={studio.providerSettings}
         purchasePending={studio.purchaseCreditsPending}
-        onClose={() => setHostedAccountOpen(false)}
+        onClose={() => studio.setSettingsDialogOpen(false)}
+        onDeleteAccount={studio.deleteHostedAccount}
         onPurchaseCredits={studio.purchaseHostedCredits}
+        onSaveProviderSettings={studio.saveProviderSettings}
+        onSignOut={studio.signOutHostedAccount}
+        onToggleModelEnabled={studio.toggleModelEnabled}
       />
 
       <FolderDialog

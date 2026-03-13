@@ -2,6 +2,7 @@ import type {
   GenerationRun,
   LibraryItemKind,
   PersistedStudioDraft,
+  StudioCreditPurchaseAmount,
   StudioWorkspaceSnapshot,
 } from "./types";
 
@@ -21,6 +22,17 @@ export interface HostedStudioUploadManifestEntry {
 export type HostedStudioMutation =
   | {
       action: "purchase_credits";
+      credits: StudioCreditPurchaseAmount;
+    }
+  | {
+      action: "set_enabled_models";
+      enabledModelIds: string[];
+    }
+  | {
+      action: "sign_out";
+    }
+  | {
+      action: "delete_account";
     }
   | {
       action: "create_folder";
