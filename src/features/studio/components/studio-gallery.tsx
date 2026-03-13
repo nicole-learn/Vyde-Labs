@@ -7,11 +7,12 @@ import {
   Copy,
   Loader2,
   Play,
+  Square,
   Slash,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
-import type { RefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import {
@@ -279,6 +280,11 @@ function AssetTile({
   onReuseItem: (itemId: string) => void;
   onToggleItemSelection: (itemId: string) => void;
 }) {
+  function handleOverlayButtonMouseDown(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   if (displayItem.type === "run") {
     const statusVisual = getRunStatusVisual(displayItem.run.status);
     const statusDescription = getRunStatusDescription(displayItem.run);
@@ -432,8 +438,69 @@ function AssetTile({
       )}
 
       {item.kind !== "text" ? (
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.28)_46%,rgba(0,0,0,0.10)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100" />
       ) : null}
+
+      {selectionModeEnabled ? (
+        <div
+          className={cn(
+            "absolute left-3 top-3 z-20 transition-opacity duration-150",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          )}
+        >
+          <button
+            type="button"
+            onMouseDown={handleOverlayButtonMouseDown}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleItemSelection(item.id);
+            }}
+            className={cn(
+              "inline-flex size-8 items-center justify-center rounded-md border backdrop-blur-sm transition",
+              isSelected
+                ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
+                : "border-white/65 bg-black/50 text-white hover:bg-black/65"
+            )}
+            aria-label={isSelected ? `Deselect ${item.title}` : `Select ${item.title}`}
+            aria-pressed={isSelected}
+            title={isSelected ? "Deselect asset" : "Select asset"}
+          >
+            {isSelected ? <Check className="size-3.5" /> : <Square className="size-3.5" />}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="absolute bottom-3 left-3 z-20 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          onMouseDown={handleOverlayButtonMouseDown}
+          onClick={(event) => {
+            event.stopPropagation();
+            onReuseItem(item.id);
+          }}
+          className="inline-flex size-8 items-center justify-center rounded-md border border-white/65 bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/65"
+          aria-label={`Reuse ${item.title}`}
+          title="Load settings to controls"
+        >
+          <Copy className="size-3.5" />
+        </button>
+      </div>
+
+      <div className="absolute bottom-3 right-3 z-20 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          onMouseDown={handleOverlayButtonMouseDown}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDeleteItem(item.id);
+          }}
+          className="inline-flex size-8 items-center justify-center rounded-md border border-destructive/70 bg-destructive/60 text-white backdrop-blur-sm transition hover:bg-destructive/75"
+          aria-label={`Delete ${item.title}`}
+          title="Delete asset"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3">
         <div
@@ -460,46 +527,8 @@ function AssetTile({
               {item.meta}
             </p>
           </div>
-
-          <div className="pointer-events-auto flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onReuseItem(item.id);
-              }}
-              className="flex size-8 items-center justify-center rounded-md bg-black/55 text-white/90 backdrop-blur-sm transition hover:bg-black/70"
-              aria-label={`Reuse ${item.title}`}
-            >
-              <Copy className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDeleteItem(item.id);
-              }}
-              className="flex size-8 items-center justify-center rounded-md bg-black/55 text-white/90 backdrop-blur-sm transition hover:bg-red-500/80"
-              aria-label={`Delete ${item.title}`}
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </div>
         </div>
       </div>
-
-      {selectionModeEnabled ? (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleItemSelection(item.id);
-          }}
-          className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-sm"
-        >
-          {isSelected ? "Selected" : "Select"}
-        </button>
-      ) : null}
     </div>
   );
 }
