@@ -162,26 +162,6 @@ function getRunStatusDescription(run: GenerationRun) {
   return "Generation did not complete.";
 }
 
-function getAssetStatusVisual(item: LibraryItem): CardStatusVisual | null {
-  if (item.source !== "generated") {
-    return null;
-  }
-
-  if (item.kind === "text") {
-    return {
-      badgeClassName: "border-black/12 bg-black/[0.06] text-black/72",
-      icon: Check,
-      label: "Done",
-    };
-  }
-
-  return {
-    badgeClassName: "border-white/14 bg-black/30 text-white/88",
-    icon: Check,
-    label: "Done",
-  };
-}
-
 function formatMediaDurationLabel(seconds: number | null) {
   if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
     return null;
@@ -403,7 +383,6 @@ function AssetTile({
 
   const { item } = displayItem;
   const previewMediaKind = getLibraryItemPreviewMediaKind(item);
-  const assetStatusVisual = getAssetStatusVisual(item);
   const thumbnailUrl = getLibraryItemThumbnailUrl(item);
   const mediaDurationLabel = formatMediaDurationLabel(item.mediaDurationSeconds);
   const showTransparentChecker = isTransparentImageItem(item);
@@ -473,16 +452,6 @@ function AssetTile({
       )}
       aria-label={item.prompt || item.title}
     >
-      {assetStatusVisual ? (
-        <div className="pointer-events-none absolute left-3 top-[46px] z-20">
-          <StatusBadge
-            className={assetStatusVisual.badgeClassName}
-            icon={assetStatusVisual.icon}
-            label={assetStatusVisual.label}
-          />
-        </div>
-      ) : null}
-
       {item.kind === "audio" ? (
         <div className="relative size-full overflow-hidden bg-[linear-gradient(180deg,rgba(9,18,28,0.96),rgba(8,20,34,0.84))]">
               {thumbnailUrl ? (
