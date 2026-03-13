@@ -83,9 +83,9 @@ export function StudioTopBar({
             className="h-6 w-auto shrink-0"
             draggable={false}
           />
-          <div className="min-w-0 text-[16px] font-semibold tracking-tight">
-            <span className="text-primary">Try</span>
-            <span className="text-foreground">Playground</span>
+          <div className="min-w-0 text-[22px] font-extrabold tracking-[-0.04em] leading-none">
+            <span className="text-foreground">try</span>
+            <span className="text-primary">playground</span>
           </div>
         </div>
       </div>
