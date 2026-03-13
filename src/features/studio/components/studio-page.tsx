@@ -16,6 +16,7 @@ import { StudioTopBar } from "./studio-top-bar";
 import { StudioWorkspaceShell } from "./studio-workspace-shell";
 import { useStudioAppMode } from "../studio-app-mode";
 import { isStudioItemDrag } from "../studio-drag-data";
+import { STUDIO_MEDIA_UPLOAD_ACCEPT } from "../studio-local-runtime-helpers";
 import { useStudioRuntime } from "../use-studio-runtime";
 import type { LibraryItem } from "../types";
 
@@ -264,6 +265,7 @@ export function StudioPage({
       <input
         ref={fileInputRef}
         type="file"
+        accept={STUDIO_MEDIA_UPLOAD_ACCEPT}
         multiple
         className="hidden"
         onChange={(event) => {

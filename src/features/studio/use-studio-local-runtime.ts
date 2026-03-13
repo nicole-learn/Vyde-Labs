@@ -572,9 +572,13 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
     (files: File[]) => {
       if (files.length === 0) return;
 
-      const nextItems = files.map((file) =>
-        createUploadedLibraryItem(file, selectedFolderId)
-      );
+      const nextItems = files
+        .map((file) => createUploadedLibraryItem(file, selectedFolderId))
+        .filter((item): item is LibraryItem => Boolean(item));
+
+      if (nextItems.length === 0) {
+        return;
+      }
 
       for (const item of nextItems) {
         if (item.previewUrl) {

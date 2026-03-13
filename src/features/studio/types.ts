@@ -2,7 +2,7 @@ export type StudioModelKind = "image" | "video" | "text";
 export type StudioModelSection = "images" | "videos" | "text";
 export type StudioRunStatus = "queued" | "running" | "completed";
 export type LibraryItemSource = "generated" | "uploaded";
-export type LibraryItemKind = StudioModelKind | "file";
+export type LibraryItemKind = StudioModelKind;
 export type LibraryItemRole =
   | "generated_output"
   | "uploaded_source"

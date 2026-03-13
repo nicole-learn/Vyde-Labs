@@ -21,6 +21,7 @@ import {
 } from "react";
 import { cn } from "@/lib/cn";
 import { readDraggedLibraryItems } from "../studio-drag-data";
+import { STUDIO_MEDIA_UPLOAD_ACCEPT } from "../studio-local-runtime-helpers";
 import type { StudioDraft, StudioModelDefinition, StudioModelSection } from "../types";
 
 interface FloatingControlBarProps {
@@ -339,7 +340,7 @@ function AddReferenceButton({
     >
       <input
         type="file"
-        accept="image/*,video/*"
+        accept={STUDIO_MEDIA_UPLOAD_ACCEPT}
         multiple
         className="hidden"
         disabled={!canAdd}

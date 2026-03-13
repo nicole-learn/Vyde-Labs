@@ -3,6 +3,8 @@
 import { createStudioId } from "./studio-local-runtime-data";
 import type { DraftReference, LibraryItem, StudioFolder } from "./types";
 
+export const STUDIO_MEDIA_UPLOAD_ACCEPT = "image/*,video/*";
+
 function sanitizeFileName(rawValue: string) {
   return rawValue
     .trim()
@@ -213,18 +215,20 @@ export function createTextLibraryItem(params: {
 export function createUploadedLibraryItem(
   file: File,
   folderId: string | null
-): LibraryItem {
+): LibraryItem | null {
   const fileType = file.type.toLowerCase();
-  const kind =
-    fileType.startsWith("image/")
-      ? "image"
-      : fileType.startsWith("video/")
-        ? "video"
-        : "file";
-  const previewUrl =
-    kind === "image" || kind === "video" ? URL.createObjectURL(file) : null;
-  const aspectRatio =
-    kind === "video" ? 16 / 9 : kind === "image" ? 4 / 5 : 0.82;
+  const kind = fileType.startsWith("image/")
+    ? "image"
+    : fileType.startsWith("video/")
+      ? "video"
+      : null;
+
+  if (!kind) {
+    return null;
+  }
+
+  const previewUrl = URL.createObjectURL(file);
+  const aspectRatio = kind === "video" ? 16 / 9 : 4 / 5;
 
   return {
     id: createStudioId("asset"),
