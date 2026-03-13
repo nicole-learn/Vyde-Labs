@@ -330,6 +330,7 @@ export function StudioPage({
             folderCounts={studio.folderCounts}
             folders={studio.folders}
             onCopyFolderId={copyFolderId}
+            onReorderFolders={studio.reorderFolders}
             onRequestDeleteFolder={setFolderDeleteTargetId}
             selectedFolderId={studio.selectedFolderId}
             onCreateFolder={studio.openCreateFolder}

@@ -33,6 +33,41 @@ type HostedMockStore = {
 
 const STORE_KEY = "__VYDELABS_HOSTED_MOCK_STORE__";
 
+function sortFoldersByOrder(folders: StudioFolder[]) {
+  return [...folders].sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder;
+    }
+
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function reorderFolders(
+  folders: StudioFolder[],
+  orderedFolderIds: string[],
+  updatedAt: string
+) {
+  const folderMap = new Map(folders.map((folder) => [folder.id, folder]));
+  const nextFolders = orderedFolderIds
+    .map((folderId) => folderMap.get(folderId))
+    .filter((folder): folder is StudioFolder => Boolean(folder));
+  const includedIds = new Set(nextFolders.map((folder) => folder.id));
+  const remainingFolders = sortFoldersByOrder(folders).filter(
+    (folder) => !includedIds.has(folder.id)
+  );
+
+  return [...nextFolders, ...remainingFolders].map((folder, index) => ({
+    ...folder,
+    sortOrder: index,
+    updatedAt: folder.sortOrder === index ? folder.updatedAt : updatedAt,
+  }));
+}
+
 function quoteCredits(modelId: string, draft: PersistedStudioDraft) {
   if (modelId === "veo-3.1") {
     const durationMultiplier = Math.max(1, Math.round(draft.durationSeconds / 4));
@@ -317,6 +352,14 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         folder.id === mutation.folderId
           ? { ...folder, name: mutation.name.trim(), updatedAt }
           : folder
+      );
+      break;
+    }
+    case "reorder_folders": {
+      snapshot.folders = reorderFolders(
+        snapshot.folders,
+        mutation.orderedFolderIds,
+        new Date().toISOString()
       );
       break;
     }

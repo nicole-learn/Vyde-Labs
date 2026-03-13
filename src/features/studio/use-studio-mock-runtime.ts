@@ -86,6 +86,41 @@ function createEmptyDraftReferenceMap() {
   ) as Record<string, DraftReference[]>;
 }
 
+function sortFoldersByOrder(folders: StudioFolder[]) {
+  return [...folders].sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder;
+    }
+
+    if (left.createdAt !== right.createdAt) {
+      return left.createdAt.localeCompare(right.createdAt);
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function reorderStudioFolders(
+  folders: StudioFolder[],
+  orderedFolderIds: string[],
+  updatedAt: string
+) {
+  const folderMap = new Map(folders.map((folder) => [folder.id, folder]));
+  const nextFolders = orderedFolderIds
+    .map((folderId) => folderMap.get(folderId))
+    .filter((folder): folder is StudioFolder => Boolean(folder));
+  const includedIds = new Set(nextFolders.map((folder) => folder.id));
+  const remainingFolders = sortFoldersByOrder(folders).filter(
+    (folder) => !includedIds.has(folder.id)
+  );
+
+  return [...nextFolders, ...remainingFolders].map((folder, index) => ({
+    ...folder,
+    sortOrder: index,
+    updatedAt: folder.sortOrder === index ? folder.updatedAt : updatedAt,
+  }));
+}
+
 function quoteCredits(modelId: string, draft: StudioDraft) {
   if (modelId === "veo-3.1") {
     const durationMultiplier = Math.max(1, Math.round(draft.durationSeconds / 4));
@@ -331,7 +366,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       setCreditBalance(nextSnapshot.creditBalance);
       setActiveCreditPack(nextSnapshot.activeCreditPack);
       setQueueSettings(nextSnapshot.queueSettings);
-      setFolders(nextSnapshot.folders);
+      setFolders(sortFoldersByOrder(nextSnapshot.folders));
       setFolderItems(nextSnapshot.folderItems);
       setRunFiles(nextSnapshot.runFiles);
       setRuns(nextSnapshot.generationRuns);
@@ -1409,6 +1444,35 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     setSelectedFolderId((current) => (current === folderId ? null : current));
   }, [appMode, applyHostedMutation]);
 
+  const reorderFolders = useCallback(
+    (orderedFolderIds: string[]) => {
+      if (orderedFolderIds.length === 0) {
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+      setFolders((current) => reorderStudioFolders(current, orderedFolderIds, updatedAt));
+
+      if (appMode !== "hosted") {
+        return;
+      }
+
+      void applyHostedMutation({
+        action: "reorder_folders",
+        orderedFolderIds,
+      }).catch(() => {
+        void fetchHostedSnapshot()
+          .then((nextSnapshot) => {
+            applySnapshot(nextSnapshot, { preserveDrafts: true });
+          })
+          .catch(() => {
+            // Keep the optimistic folder order if the hosted mock refresh fails.
+          });
+      });
+    },
+    [appMode, applyHostedMutation, applySnapshot]
+  );
+
   const reuseRun = useCallback(
     (runId: string) => {
       const run = runs.find((entry) => entry.id === runId);
@@ -1949,6 +2013,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     purchaseHostedCredits,
     queueLimitDialogOpen,
     removeReference,
+    reorderFolders,
     reuseItem,
     reuseRun,
     saveFolder,

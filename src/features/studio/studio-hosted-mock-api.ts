@@ -26,6 +26,10 @@ export type HostedStudioMutation =
       folderId: string;
     }
   | {
+      action: "reorder_folders";
+      orderedFolderIds: string[];
+    }
+  | {
       action: "move_items";
       itemIds: string[];
       folderId: string | null;

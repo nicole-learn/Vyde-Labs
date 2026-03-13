@@ -108,10 +108,13 @@ export function FolderOptionsMenu({
   };
 
   return (
-    <div className={className}>
+    <div className={className} data-folder-menu-root>
       <div ref={menuRef} className="relative inline-flex items-center justify-center">
         <button
           type="button"
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
           onClick={(event) => {
             event.stopPropagation();
             setOpen((current) => !current);
