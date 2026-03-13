@@ -121,15 +121,17 @@ export function StudioTopBar({
           <Upload className="size-3.5" />
           <span>Upload Files</span>
         </ActionPillButton>
-        <Slider
-          min={0}
-          max={6}
-          step={1}
-          value={[sizeLevel]}
-          onValueChange={(value) => onSizeLevelChange(value[0] ?? sizeLevel)}
-          aria-label="Gallery size"
-          className="w-[158px] cursor-grab [&_[data-slot=slider-range]]:bg-primary/80 [&_[data-slot=slider-thumb]]:size-[18px] [&_[data-slot=slider-thumb]]:border-0 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:shadow-[0_1px_8px_rgba(0,0,0,0.45)] [&_[data-slot=slider-track]]:bg-white/10"
-        />
+        <div className="flex h-9 w-[166px] shrink-0 items-center rounded-full border border-white/10 bg-white/[0.03] px-3">
+          <Slider
+            min={0}
+            max={6}
+            step={1}
+            value={[sizeLevel]}
+            onValueChange={(value) => onSizeLevelChange(value[0] ?? sizeLevel)}
+            aria-label="Gallery size"
+            className="w-full cursor-grab [&_[data-slot=slider-range]]:bg-primary/90 [&_[data-slot=slider-thumb]]:size-[18px] [&_[data-slot=slider-thumb]]:border-0 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:shadow-[0_1px_8px_rgba(0,0,0,0.45)] [&_[data-slot=slider-track]]:h-1.5 [&_[data-slot=slider-track]]:bg-white/12"
+          />
+        </div>
         <StudioAccountButton
           appMode={appMode}
           hasFalKey={hasFalKey}
