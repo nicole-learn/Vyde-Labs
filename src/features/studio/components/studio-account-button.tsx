@@ -1,7 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/cn";
-
 interface StudioAccountButtonProps {
   hasFalKey: boolean;
   onClick: () => void;
@@ -17,49 +15,15 @@ export function StudioAccountButton({
       onClick={onClick}
       aria-label="Local settings"
       title="Local settings"
-      className="relative flex size-[46px] shrink-0 items-center justify-center rounded-full transition-all duration-150 hover:opacity-85 active:scale-[0.95]"
+      className="relative flex size-[42px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-[color-mix(in_oklch,var(--primary)_25%,black)] text-sm font-semibold text-primary-foreground transition-all duration-150 hover:brightness-110 active:scale-[0.97]"
     >
-      <svg
-        className="pointer-events-none absolute inset-0"
-        width={46}
-        height={46}
-        viewBox="0 0 46 46"
-        aria-hidden
-      >
-        <circle
-          cx={23}
-          cy={23}
-          r={21}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          className="opacity-10"
-        />
-        <circle
-          cx={23}
-          cy={23}
-          r={21}
-          fill="none"
-          stroke={hasFalKey ? "var(--primary)" : "oklch(0.8 0.18 85)"}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeDasharray={131.95}
-          strokeDashoffset={hasFalKey ? 16 : 58}
-          className="transition-[stroke-dashoffset,stroke] duration-500 ease-out"
-          style={{ transform: "rotate(-90deg) scaleY(-1)", transformOrigin: "center" }}
-        />
-      </svg>
-
+      <span>V</span>
       <span
-        className={cn(
-          "relative flex size-[38px] items-center justify-center rounded-full border text-sm font-bold text-foreground",
-          hasFalKey
-            ? "border-white/8 bg-muted"
-            : "border-amber-300/30 bg-amber-400/10"
-        )}
-      >
-        V
-      </span>
+        className="absolute bottom-[5px] right-[5px] size-2.5 rounded-full border border-black/60"
+        style={{
+          background: hasFalKey ? "var(--primary)" : "oklch(0.8 0.18 85)",
+        }}
+      />
     </button>
   );
 }

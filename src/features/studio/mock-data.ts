@@ -172,9 +172,9 @@ export function createRunSummary(
 function createSeedFolders() {
   const now = new Date().toISOString();
   return [
+    { id: createId("folder"), name: "References", createdAt: now },
+    { id: createId("folder"), name: "Prompts", createdAt: now },
     { id: createId("folder"), name: "Concepts", createdAt: now },
-    { id: createId("folder"), name: "Client Work", createdAt: now },
-    { id: createId("folder"), name: "Social Cuts", createdAt: now },
   ] satisfies StudioFolder[];
 }
 

@@ -16,7 +16,7 @@ interface StudioWorkspaceShellProps {
 }
 
 const DESKTOP_TOP_BAR_HEIGHT = 72;
-const DESKTOP_RIGHT_SIDEBAR_WIDTH = 240;
+const DESKTOP_RIGHT_SIDEBAR_WIDTH = 220;
 const DEFAULT_PRIMARY_WIDTH = 64;
 const MIN_PRIMARY_WIDTH = 34;
 const MAX_PRIMARY_WIDTH = 82;
@@ -126,38 +126,27 @@ export function StudioWorkspaceShell({
 }: StudioWorkspaceShellProps) {
   if (isDesktopViewport) {
     return (
-      <div className="flex h-dvh min-h-0 overflow-hidden">
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
+        <div className="shrink-0" style={{ height: `${DESKTOP_TOP_BAR_HEIGHT}px` }}>
+          {topBar}
+        </div>
         <div className="min-h-0 min-w-0 flex-1">
           <div className="relative h-full min-h-0 min-w-0">
             <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-              <div className="relative min-h-0 min-w-0 flex-1">
-                <div className="flex h-full min-h-0 min-w-0 flex-col">
-                  <div className="shrink-0" style={{ height: `${DESKTOP_TOP_BAR_HEIGHT}px` }}>
-                    {topBar}
-                  </div>
-                  <div className="min-h-0 min-w-0 flex-1">
-                    <DesktopSplitPanels
-                      onCloseSecondary={onCloseSecondary}
-                      primaryPanel={primaryPanel}
-                      secondaryPanel={secondaryPanel}
-                    />
-                  </div>
-                </div>
+              <div className="min-h-0 min-w-0 flex-1">
+                <DesktopSplitPanels
+                  onCloseSecondary={onCloseSecondary}
+                  primaryPanel={primaryPanel}
+                  secondaryPanel={secondaryPanel}
+                />
               </div>
 
-              <div
-                className="shrink-0 min-h-0"
+              <aside
+                className="shrink-0 min-h-0 border-l border-white/8 bg-black"
                 style={{ width: `${DESKTOP_RIGHT_SIDEBAR_WIDTH}px` }}
               >
-                <div className="flex h-full min-h-0 flex-col">
-                  <div
-                    className="shrink-0"
-                    style={{ height: `${DESKTOP_TOP_BAR_HEIGHT}px` }}
-                    aria-hidden
-                  />
-                  <div className="min-h-0 flex-1">{rightSidebar}</div>
-                </div>
-              </div>
+                <div className="min-h-0 h-full">{rightSidebar}</div>
+              </aside>
             </div>
 
             <div className="relative z-[120]">{floatingOverlay}</div>

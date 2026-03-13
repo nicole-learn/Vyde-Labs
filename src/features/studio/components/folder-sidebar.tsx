@@ -66,22 +66,22 @@ function FolderRow({
           onDrop(parseDraggedItemIds(event.dataTransfer));
         }}
         className={cn(
-          "flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-sm transition-all duration-150",
+          "flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-[15px] transition-all duration-150",
           active
-            ? "bg-primary/10 font-medium text-primary"
-            : "text-foreground/80 hover:bg-muted/50 hover:text-foreground"
+            ? "bg-white/[0.11] font-medium text-foreground"
+            : "bg-white/[0.05] text-foreground/84 hover:bg-white/[0.08] hover:text-foreground"
         )}
       >
         <span className="truncate">{label}</span>
       </button>
 
       {onRename || onDelete ? (
-        <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
           {onRename ? (
             <button
               type="button"
               onClick={onRename}
-              className="rounded-md p-1 text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+              className="rounded-full p-1.5 text-muted-foreground transition hover:bg-white/[0.08] hover:text-foreground"
               aria-label={`Rename ${label}`}
               title="Rename folder"
             >
@@ -92,7 +92,7 @@ function FolderRow({
             <button
               type="button"
               onClick={onDelete}
-              className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/14 hover:text-red-200"
+              className="rounded-full p-1.5 text-muted-foreground transition hover:bg-red-500/14 hover:text-red-200"
               aria-label={`Delete ${label}`}
               title="Delete folder"
             >
@@ -116,9 +116,9 @@ export function FolderSidebar({
   onSelectFolder,
 }: FolderSidebarProps) {
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l-[2px] border-border/40 bg-background">
-      <div className="stable-scrollbar flex-1 min-h-0 overflow-y-auto p-1.5">
-        <div className="space-y-0.5">
+    <aside className="flex h-full min-h-0 flex-col bg-black px-2 pb-2 pt-3">
+      <div className="stable-scrollbar flex-1 min-h-0 overflow-y-auto">
+        <div className="space-y-2">
           {folders.map((folder) => (
             <FolderRow
               key={folder.id}
@@ -136,19 +136,19 @@ export function FolderSidebar({
       </div>
 
       {selectedFolderId ? (
-        <div className="border-t border-border/40 px-2.5 py-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="px-2 py-3 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
           Selected folder has {selectedFolderCount} item
           {selectedFolderCount === 1 ? "" : "s"}
         </div>
       ) : null}
 
-      <div className="border-t border-border/40 p-1.5">
+      <div className="pt-2">
         <button
           type="button"
           onClick={onCreateFolder}
-          className="flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/16 px-4 py-3 text-[15px] text-foreground/84 transition-colors hover:border-white/24 hover:bg-white/[0.04] hover:text-foreground"
         >
-          <FolderPlus className="size-3.5" />
+          <FolderPlus className="size-4" />
           <span>Add Folder</span>
         </button>
       </div>
