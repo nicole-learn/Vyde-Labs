@@ -79,13 +79,13 @@ export function StudioTopBar({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo-dark.svg"
-            alt="Vyde Labs"
+            alt="TryPlayground"
             className="h-6 w-auto shrink-0"
             draggable={false}
           />
           <div className="min-w-0 text-[16px] font-semibold tracking-tight">
-            <span className="text-primary">Vyde</span>
-            <span className="text-foreground"> Labs</span>
+            <span className="text-primary">Try</span>
+            <span className="text-foreground">Playground</span>
           </div>
         </div>
       </div>

@@ -3,17 +3,17 @@
 import type { StudioProviderSettings, StudioWorkspaceSnapshot } from "./types";
 
 const STORAGE_KEYS = {
-  gridDensity: "vydelabs.studio.gridDensity",
-  providerSettings: "vydelabs.studio.providerSettings",
-  localWorkspaceSnapshot: "vydelabs.studio.local.workspaceSnapshot",
-  hostedWorkspaceSnapshot: "vydelabs.studio.hosted.workspaceSnapshot",
+  gridDensity: "tryplayground.studio.gridDensity",
+  providerSettings: "tryplayground.studio.providerSettings",
+  localWorkspaceSnapshot: "tryplayground.studio.local.workspaceSnapshot",
+  hostedWorkspaceSnapshot: "tryplayground.studio.hosted.workspaceSnapshot",
 } as const;
 
 const LEGACY_STORAGE_KEYS = {
-  providerSettings: "vydelabs.studio.settings",
+  providerSettings: "tryplayground.studio.settings",
 } as const;
 
-const UPLOADS_DATABASE_NAME = "vydelabs.studio.uploads";
+const UPLOADS_DATABASE_NAME = "tryplayground.studio.uploads";
 const UPLOADS_STORE_NAME = "uploadedAssets";
 const UPLOADS_DATABASE_VERSION = 1;
 

@@ -1,7 +1,7 @@
 import type { LibraryItem, LibraryItemKind } from "./types";
 
-const STUDIO_ITEM_DRAG_DATA_TYPE = "application/vnd.vydelabs.items";
-const STUDIO_ITEM_DRAG_SCHEMA = "vydelabs.library-items.v1";
+const STUDIO_ITEM_DRAG_DATA_TYPE = "application/vnd.tryplayground.items";
+const STUDIO_ITEM_DRAG_SCHEMA = "tryplayground.library-items.v1";
 
 interface DraggedLibraryLeadItem {
   id: string;

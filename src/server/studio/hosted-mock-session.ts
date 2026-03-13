@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-export const HOSTED_MOCK_SESSION_COOKIE = "vydelabs_hosted_mock_session";
+export const HOSTED_MOCK_SESSION_COOKIE = "tryplayground_hosted_mock_session";
 
-const STORE_KEY = "__VYDELABS_HOSTED_MOCK_SESSIONS__";
+const STORE_KEY = "__TRYPLAYGROUND_HOSTED_MOCK_SESSIONS__";
 
 function getSessionStore() {
   const globalStore = globalThis as typeof globalThis & {

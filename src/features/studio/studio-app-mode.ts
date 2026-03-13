@@ -4,9 +4,9 @@ import { useSyncExternalStore } from "react";
 
 export type StudioAppMode = "local" | "hosted";
 
-const APP_MODE_STORAGE_KEY = "vydelabs.dev.appMode";
+const APP_MODE_STORAGE_KEY = "tryplayground.dev.appMode";
 const DEFAULT_APP_MODE: StudioAppMode =
-  process.env.NEXT_PUBLIC_VYDE_APP_MODE === "hosted" ? "hosted" : "local";
+  process.env.NEXT_PUBLIC_TRYPLAYGROUND_APP_MODE === "hosted" ? "hosted" : "local";
 const appModeListeners = new Set<() => void>();
 
 function loadStoredAppMode(): StudioAppMode | null {

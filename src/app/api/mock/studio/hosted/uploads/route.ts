@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (request.headers.get(HOSTED_MOCK_CLIENT_HEADER) !== HOSTED_MOCK_CLIENT_VALUE) {
     return NextResponse.json(
       {
-        error: "Hosted mock endpoint is only available to the Vyde Labs mock client.",
+        error: "Hosted mock endpoint is only available to the TryPlayground mock client.",
       },
       { status: 403 }
     );

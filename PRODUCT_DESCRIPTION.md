@@ -1,14 +1,14 @@
-# Vyde Labs Product Description
+# TryPlayground Product Description
 
 ## Overview
 
-Vyde Labs is a Fal-powered AI creation studio built around one idea:
+TryPlayground is a Fal-powered AI creation studio built around one idea:
 
 AI tools should feel usable, organized, and consistent the moment you open them.
 
-Instead of splitting text, image, video, speech, and utility creation across disconnected tools, Vyde Labs brings them into a single workspace with one shared interface. You choose a model, enter a prompt, add references when needed, run the generation, and keep what you create organized in folders.
+Instead of splitting text, image, video, speech, and utility creation across disconnected tools, TryPlayground brings them into a single workspace with one shared interface. You choose a model, enter a prompt, add references when needed, run the generation, and keep what you create organized in folders.
 
-Vyde Labs is available in two forms:
+TryPlayground is available in two forms:
 
 - an open-source local version for people who want to run everything on their own machine with their own Fal API key
 - a hosted version for people who want a managed experience with simple credit-based billing
@@ -17,7 +17,7 @@ Both versions are built around the same studio experience. The difference is how
 
 ## The Core Experience
 
-At its heart, Vyde Labs is a focused AI studio.
+At its heart, TryPlayground is a focused AI studio.
 
 The product is designed around a few core actions:
 
@@ -28,9 +28,9 @@ The product is designed around a few core actions:
 - reviewing previous runs
 - organizing outputs into folders
 
-The experience is intentionally direct. Vyde Labs is not a workflow builder and it is not trying to turn simple generation into a multi-step automation diagram. The point is to reduce friction between an idea and an output.
+The experience is intentionally direct. TryPlayground is not a workflow builder and it is not trying to turn simple generation into a multi-step automation diagram. The point is to reduce friction between an idea and an output.
 
-When a user opens Vyde Labs, they enter a single workspace. From there, everything important is visible:
+When a user opens TryPlayground, they enter a single workspace. From there, everything important is visible:
 
 - the model they are working with
 - the controls relevant to that model
@@ -42,7 +42,7 @@ This is what makes the product feel clean. The studio is designed to stay center
 
 ## Text, Image, Video, Speech, and Utility In One Place
 
-Vyde Labs supports five core types of creation:
+TryPlayground supports five core types of creation:
 
 - LLM-based text generation
 - image generation
@@ -60,15 +60,15 @@ For users, that means the mental model stays the same:
 - generate
 - save and organize what matters
 
-This consistency matters more than it sounds. Many AI tools force users to relearn the interface every time they switch tasks. Vyde Labs is designed so the product feels familiar whether you are asking for text, creating still images, generating motion, voicing a script, or cleaning up an image for compositing.
+This consistency matters more than it sounds. Many AI tools force users to relearn the interface every time they switch tasks. TryPlayground is designed so the product feels familiar whether you are asking for text, creating still images, generating motion, voicing a script, or cleaning up an image for compositing.
 
 ## Why Folders Are A Core Feature
 
-Folders are one of the most important parts of Vyde Labs.
+Folders are one of the most important parts of TryPlayground.
 
 People do not create just one output. They generate variations, references, drafts, alternates, and final picks. Without organization, even a great model interface becomes unusable after enough activity.
 
-Vyde Labs treats folders as part of the core product, not as a secondary storage feature.
+TryPlayground treats folders as part of the core product, not as a secondary storage feature.
 
 Folders make it possible to:
 
@@ -80,9 +80,9 @@ Folders make it possible to:
 
 This is especially important for users who generate often. A good AI tool should not only help users create. It should help them keep creating without turning their library into chaos.
 
-## Open Source / Local Vyde Labs
+## Open Source / Local TryPlayground
 
-The open-source version of Vyde Labs is designed for users who want full control.
+The open-source version of TryPlayground is designed for users who want full control.
 
 This version runs locally on a user's own machine. The user brings their own Fal API key, enters it through the in-app provider settings screen, and uses the same studio interface without needing a cloud deployment or managed account.
 
@@ -90,12 +90,12 @@ This version runs locally on a user's own machine. The user brings their own Fal
 
 In the local version:
 
-- the user installs and runs Vyde Labs on their own computer
+- the user installs and runs TryPlayground on their own computer
 - the user enters their Fal API key inside the app
 - the key stays only for the current app session unless the user chooses a more persistent setup later
 - generations are made using the user's own Fal account
 - files, history, and folders stay local
-- there is no billing layer inside Vyde Labs itself
+- there is no billing layer inside TryPlayground itself
 
 This makes the local version ideal for users who want privacy, direct provider billing, or a self-run setup.
 
@@ -121,18 +121,18 @@ The local version is a strong fit for:
 - users who prefer local-first tools
 - people who want to pay Fal directly under their own account
 
-## Hosted Vyde Labs
+## Hosted TryPlayground
 
 The hosted version is designed for users who want the same product with less setup.
 
-In the hosted version, Vyde Labs manages the provider key and infrastructure. A user signs in, buys credits, and starts creating immediately. The UI remains the same studio experience, with one important addition: a profile button in the top-right corner that provides access to account information, credits, and billing.
+In the hosted version, TryPlayground manages the provider key and infrastructure. A user signs in, buys credits, and starts creating immediately. The UI remains the same studio experience, with one important addition: a profile button in the top-right corner that provides access to account information, credits, and billing.
 
 ### How the hosted version works
 
 In the hosted version:
 
-- users sign in to a Vyde Labs account
-- Vyde Labs manages the Fal integration behind the scenes
+- users sign in to a TryPlayground account
+- TryPlayground manages the Fal integration behind the scenes
 - users do not provide their own API key
 - generations are billed through credits
 - outputs, history, and folders live in the user's hosted workspace
@@ -162,13 +162,13 @@ The goal is to keep the pricing model predictable instead of mixing subscription
 
 ## Queue Limits And Fairness
 
-Vyde Labs keeps queueing simple and predictable in both the local and hosted versions.
+TryPlayground keeps queueing simple and predictable in both the local and hosted versions.
 
 The rule is:
 
 - each user can have up to 100 active queued or generating items at one time
 - this 100-item cap applies in both local and hosted mode
-- if a user tries to submit another generation after reaching that cap, Vyde Labs shows a simple popup that says:
+- if a user tries to submit another generation after reaching that cap, TryPlayground shows a simple popup that says:
 
 `limit of 100 concurrent queues/ generations reached, please wait for your generations to finish before continuing.`
 
@@ -193,7 +193,7 @@ The hosted version is best for users who want:
 
 ## LLMs As A Core Offering
 
-LLMs are not an optional extra inside Vyde Labs. They are part of the core product.
+LLMs are not an optional extra inside TryPlayground. They are part of the core product.
 
 That matters because many creative workflows begin with language:
 
@@ -203,7 +203,7 @@ That matters because many creative workflows begin with language:
 - refining prompt language
 - developing creative briefs
 
-In Vyde Labs, LLM access belongs in the same space as image, video, speech, and utility generation. Users should not have to leave the product to move from language to visuals, from visuals to speech, or from cleanup tools back to language.
+In TryPlayground, LLM access belongs in the same space as image, video, speech, and utility generation. Users should not have to leave the product to move from language to visuals, from visuals to speech, or from cleanup tools back to language.
 
 For users, the important thing is simple:
 
@@ -211,9 +211,9 @@ For users, the important thing is simple:
 - the interface stays consistent
 - the workspace stays organized in one place
 
-## What Makes Vyde Labs Different
+## What Makes TryPlayground Different
 
-Vyde Labs is not trying to compete by being the most complicated AI platform.
+TryPlayground is not trying to compete by being the most complicated AI platform.
 
 Its value comes from restraint.
 
@@ -239,15 +239,15 @@ The product does not ask users to learn a workflow language before they can get 
 
 ### Hosted
 
-- Vyde Labs manages the provider access
-- you sign in with a Vyde Labs account
+- TryPlayground manages the provider access
+- you sign in with a TryPlayground account
 - you buy 100-credit packs
 - usage is charged at Fal market cost plus 25%
 - your workspace is managed for you
 
 ## The User Promise
 
-Vyde Labs should feel simple from the first session and stay usable after the hundredth.
+TryPlayground should feel simple from the first session and stay usable after the hundredth.
 
 That means:
 
@@ -257,4 +257,4 @@ That means:
 - no unnecessary workflow complexity
 - a clear choice between local control and hosted convenience
 
-In practical terms, Vyde Labs is a product for people who want to make things with AI and keep their work organized without fighting the tool itself.
+In practical terms, TryPlayground is a product for people who want to make things with AI and keep their work organized without fighting the tool itself.

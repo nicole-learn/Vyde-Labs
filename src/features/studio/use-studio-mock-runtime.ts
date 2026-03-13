@@ -104,7 +104,7 @@ async function fetchHostedSnapshot(signal?: AbortSignal) {
     cache: "no-store",
     credentials: "same-origin",
     headers: {
-      "x-vydelabs-mock-client": "hosted",
+      "x-tryplayground-mock-client": "hosted",
     },
     signal,
   });
@@ -127,7 +127,7 @@ async function mutateHostedSnapshot(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-vydelabs-mock-client": "hosted",
+      "x-tryplayground-mock-client": "hosted",
     },
     body: JSON.stringify(mutation),
     cache: "no-store",
@@ -206,7 +206,7 @@ async function uploadHostedFiles(
     cache: "no-store",
     credentials: "same-origin",
     headers: {
-      "x-vydelabs-mock-client": "hosted",
+      "x-tryplayground-mock-client": "hosted",
     },
     signal,
   });
@@ -1010,7 +1010,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   }, [activeCreditPack, appMode, creditBalance, profile, runs]);
 
   const accountButtonLabel =
-    appMode === "hosted" ? profile.avatarLabel || "U" : "V";
+    appMode === "hosted" ? profile.avatarLabel || "U" : "T";
 
   const clearSelection = useCallback(() => {
     setSelectedItemIds([]);

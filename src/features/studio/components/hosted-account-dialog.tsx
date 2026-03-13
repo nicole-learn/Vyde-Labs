@@ -27,7 +27,7 @@ export function HostedAccountDialog({
     <ModalShell
       open={open}
       title="Account"
-      description="Hosted Vyde Labs uses platform credits and account controls instead of personal API keys."
+      description="Hosted TryPlayground uses platform credits and account controls instead of personal API keys."
       onClose={onClose}
     >
       <div className="space-y-4">

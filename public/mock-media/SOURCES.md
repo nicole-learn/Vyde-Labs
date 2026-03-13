@@ -1,6 +1,6 @@
 # Mock Media Sources
 
-These bundled files are used only as local development fixtures for the Vyde Labs studio UI.
+These bundled files are used only as local development fixtures for the TryPlayground studio UI.
 
 - `nasa-neowise.jpg`
   - Source page: `https://commons.wikimedia.org/wiki/File:PIA23792-1600x1200(1).jpg`
@@ -20,15 +20,15 @@ These bundled files are used only as local development fixtures for the Vyde Lab
 - `product-cutout.png`
   - Derived from: `product-cutout.svg`
   - Notes: local transparent PNG fixture used to test background-removal output handling
-- `vydelabs-voiceover-sample.mp3`
+- `tryplayground-voiceover-sample.mp3`
   - Source: generated locally with macOS `say` and converted to MP3 with `ffmpeg`
   - Notes: short speech fixture for generated TTS output previews
-- `vydelabs-voiceover-sample.wav`
-  - Derived from: `vydelabs-voiceover-sample.mp3`
+- `tryplayground-voiceover-sample.wav`
+  - Derived from: `tryplayground-voiceover-sample.mp3`
   - Notes: PCM WAV fixture used for Orpheus TTS output previews
-- `vydelabs-voiceover-sample.flac`
-  - Derived from: `vydelabs-voiceover-sample.mp3`
+- `tryplayground-voiceover-sample.flac`
+  - Derived from: `tryplayground-voiceover-sample.mp3`
   - Notes: lossless FLAC fixture used for MiniMax high-fidelity output previews
-- `vydelabs-uploaded-voice-note.mp3`
+- `tryplayground-uploaded-voice-note.mp3`
   - Source: generated locally with macOS `say` and converted to MP3 with `ffmpeg`
   - Notes: short speech fixture for uploaded audio asset previews

@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vyde Labs",
+  title: "TryPlayground",
   description:
     "Fal-first AI studio for text, image, video, speech, and background-removal generation.",
 };

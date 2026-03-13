@@ -54,7 +54,7 @@ type HostedMockStore = {
   completionTimers: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-const STORE_KEY = "__VYDELABS_HOSTED_MOCK_STORE__";
+const STORE_KEY = "__TRYPLAYGROUND_HOSTED_MOCK_STORE__";
 
 function cloneSnapshot(snapshot: StudioWorkspaceSnapshot) {
   return structuredClone(snapshot);

@@ -51,21 +51,21 @@ const MOCK_MEDIA = {
     mimeType: "video/mp4",
   },
   generatedAudioMp3: {
-    previewUrl: "/mock-media/vydelabs-voiceover-sample.mp3",
+    previewUrl: "/mock-media/tryplayground-voiceover-sample.mp3",
     mediaDurationSeconds: 6,
-    fileName: "vydelabs-voiceover-sample.mp3",
+    fileName: "tryplayground-voiceover-sample.mp3",
     mimeType: "audio/mpeg",
   },
   generatedAudioWav: {
-    previewUrl: "/mock-media/vydelabs-voiceover-sample.wav",
+    previewUrl: "/mock-media/tryplayground-voiceover-sample.wav",
     mediaDurationSeconds: 6,
-    fileName: "vydelabs-voiceover-sample.wav",
+    fileName: "tryplayground-voiceover-sample.wav",
     mimeType: "audio/wav",
   },
   generatedAudioFlac: {
-    previewUrl: "/mock-media/vydelabs-voiceover-sample.flac",
+    previewUrl: "/mock-media/tryplayground-voiceover-sample.flac",
     mediaDurationSeconds: 6,
-    fileName: "vydelabs-voiceover-sample.flac",
+    fileName: "tryplayground-voiceover-sample.flac",
     mimeType: "audio/flac",
   },
   generatedCutoutImage: {
@@ -92,9 +92,9 @@ const MOCK_MEDIA = {
     mimeType: "video/mp4",
   },
   uploadedAudio: {
-    previewUrl: "/mock-media/vydelabs-uploaded-voice-note.mp3",
+    previewUrl: "/mock-media/tryplayground-uploaded-voice-note.mp3",
     mediaDurationSeconds: 5,
-    fileName: "vydelabs-uploaded-voice-note.mp3",
+    fileName: "tryplayground-uploaded-voice-note.mp3",
     mimeType: "audio/mpeg",
   },
 } as const;
@@ -327,9 +327,9 @@ function createProfile(mode: StudioAppMode): StudioProfile {
   return {
     id: userId,
     email:
-      mode === "hosted" ? "nicole@vydelabs.app" : "local@vydelabs.app",
+      mode === "hosted" ? "nicole@tryplayground.ai" : "local@tryplayground.ai",
     displayName: mode === "hosted" ? "Nicole" : "Local Workspace",
-    avatarLabel: mode === "hosted" ? "N" : "V",
+    avatarLabel: mode === "hosted" ? "N" : "T",
     avatarUrl: null,
     preferences: {},
     createdAt: SEED_BASE_TIMESTAMP,
@@ -977,7 +977,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
   const audioDraft = {
     ...createDraft(audioModel),
     prompt:
-      "Vyde Labs turns one prompt into images, video, text, speech, and clean production-ready assets in one workspace.",
+      "TryPlayground turns one prompt into images, video, text, speech, and clean production-ready assets in one workspace.",
   };
   const textDraft = {
     ...createDraft(textModel),

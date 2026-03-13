@@ -91,7 +91,7 @@ function ProviderSettingsForm({
       </label>
 
       <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white/62">
-        For now, Vyde Labs only supports Fal AI API keys and models, and stores
+        For now, TryPlayground only supports Fal AI API keys and models, and stores
         your key only for the current browser session instead of saving it
         permanently. I hope to be able to add other providers and models soon -
         Nicole

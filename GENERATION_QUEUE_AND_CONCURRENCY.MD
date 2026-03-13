@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines how Vyde Labs should handle generation queueing, concurrency, fairness, cancellation, and recovery in both hosted mode and local mode.
+This document defines how TryPlayground should handle generation queueing, concurrency, fairness, cancellation, and recovery in both hosted mode and local mode.
 
 The goal is not just to prevent overload. The goal is to make queueing feel predictable to users, fair across active hosted users, simple to explain, and safe to operate.
 
@@ -49,9 +49,9 @@ Internal states may be more detailed, but the user-facing language should remain
 
 ### 1. Fairness matters more than raw FIFO
 
-A pure global FIFO queue is not enough for hosted Vyde Labs. If one user floods the queue, other users still need a fair share of the available provider capacity.
+A pure global FIFO queue is not enough for hosted TryPlayground. If one user floods the queue, other users still need a fair share of the available provider capacity.
 
-Vyde Labs should use:
+TryPlayground should use:
 
 - FIFO within each user's queue
 - equal-weight fair sharing across active users
@@ -211,7 +211,7 @@ Recommended fields:
 
 ### 5. Credit records
 
-Whatever final billing schema Vyde Labs uses, it must support:
+Whatever final billing schema TryPlayground uses, it must support:
 
 - a hold when a hosted job enters the queue
 - release of that hold if the queued job is cancelled before provider acceptance
@@ -392,7 +392,7 @@ As slots free:
 - over time, users rotate through the available 30 slots
 - one user should not keep receiving the extra remainder slot ahead of everyone else
 
-This is the behavior Vyde Labs wants.
+This is the behavior TryPlayground wants.
 
 ## Cancellation Rules
 
@@ -413,7 +413,7 @@ Once a slot has been claimed and provider submission has started, cancellation b
 - the provider may already bill for it
 - the output may still return even if the UI thinks it was cancelled
 
-For Vyde Labs v1, the clean rule is:
+For TryPlayground v1, the clean rule is:
 
 - cancel while queued
 - do not cancel once generation has started
@@ -535,7 +535,7 @@ Reason:
 - a conservative default is safer than trying to saturate an unknown provider limit
 - the important user-facing limit is still 100 total active jobs
 
-If Vyde Labs later adds an advanced local setting for concurrency, it can build on the same queue controller.
+If TryPlayground later adds an advanced local setting for concurrency, it can build on the same queue controller.
 
 ## Local recovery
 
@@ -569,7 +569,7 @@ Local mode can be simpler, but it should still be decent:
 
 ## Final Recommendation
 
-Hosted Vyde Labs should use:
+Hosted TryPlayground should use:
 
 - relational job state in Postgres
 - equal-weight fair-share scheduling across active users
@@ -578,11 +578,11 @@ Hosted Vyde Labs should use:
 - queue-only cancellation from the UI
 - event-driven dispatch plus periodic sweepers
 
-Local Vyde Labs should use:
+Local TryPlayground should use:
 
 - the same 100-job cap
 - the same user-facing statuses
 - queue-only cancellation from the UI
 - a much simpler local FIFO scheduler with a small local concurrency cap
 
-This gives Vyde Labs a queue system that is understandable to users, fair under load, and realistic to build cleanly on Supabase and Next.js.
+This gives TryPlayground a queue system that is understandable to users, fair under load, and realistic to build cleanly on Supabase and Next.js.

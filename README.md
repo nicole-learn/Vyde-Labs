@@ -1,6 +1,6 @@
-# Vyde Labs
+# TryPlayground
 
-Vyde Labs is a clean, Fal-powered AI studio for text, image, video, speech, and background-removal generation.
+TryPlayground is a clean, Fal-powered AI studio for text, image, video, speech, and background-removal generation.
 
 It is designed to feel simple from the first minute:
 
@@ -9,7 +9,7 @@ It is designed to feel simple from the first minute:
 - one place to generate, save, and organize outputs
 - folders built directly into the core experience
 
-Vyde Labs comes in two versions:
+TryPlayground comes in two versions:
 
 - `Open Source / Local`: run it on your own computer with your own Fal API key
 - `Hosted`: use the same interface without managing your own key, powered by credits
@@ -26,13 +26,13 @@ Vyde Labs comes in two versions:
 - revisit past runs from your history
 - move from idea to output without learning a complex workflow system
 
-## Two Ways To Use Vyde Labs
+## Two Ways To Use TryPlayground
 
 ## Open Source / Local
 
 The open-source version is for people who want full control.
 
-- run Vyde Labs locally on your own machine
+- run TryPlayground locally on your own machine
 - connect your own Fal API key inside the app
 - keep your files, history, and folders local
 - use the same studio UI as the hosted version
@@ -49,7 +49,7 @@ Best for:
 
 The hosted version is for people who want the simplest possible setup.
 
-- sign in and start using Vyde Labs right away
+- sign in and start using TryPlayground right away
 - no API key required
 - credits are purchased in packs of 100
 - generation is billed from current Fal market pricing plus a 25% platform markup
@@ -61,7 +61,7 @@ Best for:
 - people who do not want to configure their own API keys
 - teams who want a straightforward credit-based model instead of provider billing
 
-## How Vyde Labs Works
+## How TryPlayground Works
 
 1. Pick a model.
 2. Write a prompt.
@@ -74,7 +74,7 @@ The goal is to make text, image, video, speech, and utility creation feel consis
 
 ## Why Folders Matter
 
-Folders are a first-class part of Vyde Labs.
+Folders are a first-class part of TryPlayground.
 
 They are not an afterthought and they are not hidden behind a secondary library system.
 
@@ -119,11 +119,11 @@ This keeps pricing transparent and easy to understand.
 
 ### Hosted
 
-- you use a managed Vyde Labs account
+- you use a managed TryPlayground account
 - billing and credit balance are attached to your profile
 - your generations and saved items stay inside your hosted workspace
 
-## Who Vyde Labs Is For
+## Who TryPlayground Is For
 
 - creators who want fast text, image, video, speech, and background-removal tools in one place
 - teams who want a clean AI workspace instead of a workflow builder
@@ -132,7 +132,7 @@ This keeps pricing transparent and easy to understand.
 
 ## The Product Philosophy
 
-Vyde Labs is intentionally simple.
+TryPlayground is intentionally simple.
 
 It is not trying to be an automation platform, an agent framework, or a visual workflow builder.
 
