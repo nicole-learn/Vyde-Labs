@@ -138,7 +138,7 @@ export function ProviderSettingsDialog({
     <ModalShell
       open={open}
       title="Provider Settings"
-      description="Connect your AI API key so this workspace can generate text, images, and video."
+      description="Connect your AI API key so this workspace can generate text, images, video, speech, and background removal."
       onClose={onClose}
     >
       <ProviderSettingsForm

@@ -32,6 +32,22 @@ function formatByteSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatMediaDuration(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.round(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
 export function splitAssetMetaPills(meta: string) {
   return meta
     .split("•")
@@ -82,6 +98,14 @@ export function buildAssetInfoRows(item: LibraryItem): AssetInfoRow[] {
     });
   }
 
+  const durationLabel = formatMediaDuration(item.mediaDurationSeconds);
+  if (durationLabel) {
+    rows.push({
+      label: "Duration",
+      value: durationLabel,
+    });
+  }
+
   if (item.mediaWidth && item.mediaHeight) {
     rows.push({
       label: "Dimensions",
@@ -93,6 +117,13 @@ export function buildAssetInfoRows(item: LibraryItem): AssetInfoRow[] {
     rows.push({
       label: "Aspect Ratio",
       value: item.aspectRatioLabel,
+    });
+  }
+
+  if (item.hasAlpha) {
+    rows.push({
+      label: "Transparency",
+      value: "Alpha background",
     });
   }
 
@@ -192,7 +223,14 @@ export function MediaStage({ item }: { item: LibraryItem }) {
   }
 
   return (
-    <div className="relative flex max-h-full max-w-full items-center justify-center">
+    <div
+      className={cn(
+        "relative flex max-h-full max-w-full items-center justify-center",
+        item.hasAlpha
+          ? "bg-[linear-gradient(45deg,rgba(255,255,255,0.09)_25%,transparent_25%,transparent_75%,rgba(255,255,255,0.09)_75%,rgba(255,255,255,0.09)),linear-gradient(45deg,rgba(255,255,255,0.09)_25%,transparent_25%,transparent_75%,rgba(255,255,255,0.09)_75%,rgba(255,255,255,0.09))] bg-[length:28px_28px] [background-position:0_0,14px_14px]"
+          : undefined
+      )}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={item.previewUrl}

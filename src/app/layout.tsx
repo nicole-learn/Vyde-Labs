@@ -24,7 +24,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "Vyde Labs",
-  description: "Fal-first AI studio for text, image, and video generation.",
+  description:
+    "Fal-first AI studio for text, image, video, speech, and background-removal generation.",
 };
 
 export default function RootLayout({

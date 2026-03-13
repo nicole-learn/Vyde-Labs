@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AudioAssetDialog } from "./asset-detail-dialog/audio-asset-dialog";
 import { GeneratedTextDialog } from "./asset-detail-dialog/generated-text-dialog";
 import { MediaAssetDialog } from "./asset-detail-dialog/media-asset-dialog";
 import { formatAssetCreatedAt } from "./asset-detail-dialog/asset-detail-shared";
@@ -46,6 +47,18 @@ function AssetDetailDialogContent({
       contentText: draftBody,
     });
   };
+
+  if (item.kind === "audio") {
+    return (
+      <AudioAssetDialog
+        item={item}
+        onClose={onClose}
+        onDelete={() => onDelete(item.id)}
+        onDownload={() => onDownload(item)}
+        onReuse={() => onReuse(item.id)}
+      />
+    );
+  }
 
   if (item.kind === "image" || item.kind === "video") {
     return (

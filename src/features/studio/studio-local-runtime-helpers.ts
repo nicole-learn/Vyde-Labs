@@ -1,6 +1,7 @@
 "use client";
 
 import { readUploadedAssetMediaMetadata } from "./studio-asset-metadata";
+import { createAudioThumbnailUrl } from "./studio-asset-thumbnails";
 import type {
   DraftReference,
   LibraryItem,
@@ -12,7 +13,7 @@ import type {
 } from "./types";
 import { createStudioId } from "./studio-local-runtime-data";
 
-export const STUDIO_MEDIA_UPLOAD_ACCEPT = "image/*,video/*";
+export const STUDIO_MEDIA_UPLOAD_ACCEPT = "image/*,video/*,audio/*";
 
 const AUDIO_EXTENSIONS = new Set([
   "mp3",
@@ -53,13 +54,32 @@ function getFileExtension(params: {
   if (normalizedMimeType.includes("webp")) return "webp";
   if (normalizedMimeType.includes("mp4")) return "mp4";
   if (normalizedMimeType.includes("webm")) return "webm";
+  if (normalizedMimeType.includes("mpeg")) return "mp3";
+  if (normalizedMimeType.includes("wav")) return "wav";
+  if (normalizedMimeType.includes("flac")) return "flac";
+  if (normalizedMimeType.includes("x-m4a") || normalizedMimeType.includes("audio/mp4")) {
+    return "m4a";
+  }
   if (params.kind === "video") return "mp4";
+  if (params.kind === "audio") return "mp3";
   if (params.kind === "text") return "txt";
   return "png";
 }
 
 function getFallbackMimeType(item: LibraryItem) {
   if (item.kind === "video") return "video/mp4";
+  if (item.kind === "audio") {
+    const extension = getFileExtension({
+      kind: item.kind,
+      mimeType: item.mimeType,
+      fileName: item.fileName,
+    });
+
+    if (extension === "wav") return "audio/wav";
+    if (extension === "flac") return "audio/flac";
+    if (extension === "m4a") return "audio/mp4";
+    return "audio/mpeg";
+  }
   if (item.kind === "text") return "text/plain";
   return "image/png";
 }
@@ -99,7 +119,7 @@ export function removePendingTimerId(timerIds: number[], timerId: number) {
 }
 
 export function isReferenceEligibleLibraryItem(item: LibraryItem) {
-  return item.kind === "image" || item.kind === "video";
+  return item.kind === "image" || item.kind === "video" || item.kind === "audio";
 }
 
 export function getReferenceInputKindFromFile(
@@ -206,7 +226,15 @@ export function releaseRemovedDraftReferencePreviews(
 export function createDraftReferenceFromFile(file: File): DraftReference {
   const kind = getReferenceInputKindFromFile(file);
   const previewUrl =
-    kind === "image" || kind === "video" ? URL.createObjectURL(file) : null;
+    kind === "image" || kind === "video"
+      ? URL.createObjectURL(file)
+      : kind === "audio"
+        ? createAudioThumbnailUrl({
+            title: file.name,
+            subtitle: "Audio reference",
+            accentSeed: file.name,
+          })
+        : null;
 
   return {
     id: createStudioId("ref"),
@@ -217,7 +245,8 @@ export function createDraftReferenceFromFile(file: File): DraftReference {
     kind,
     mimeType: file.type || null,
     previewUrl,
-    previewSource: previewUrl ? "owned" : "none",
+    previewSource:
+      kind === "audio" ? "none" : previewUrl ? "owned" : "none",
   };
 }
 
@@ -260,7 +289,8 @@ export async function resolveLibraryItemToReferenceFile(
   });
   const fileName = `${baseFileName}.${extension}`;
 
-  const sourcePreviewUrl = item.thumbnailUrl ?? item.previewUrl;
+  const sourcePreviewUrl =
+    item.kind === "audio" ? item.previewUrl : item.thumbnailUrl ?? item.previewUrl;
 
   if (sourcePreviewUrl) {
     try {
@@ -274,6 +304,10 @@ export async function resolveLibraryItemToReferenceFile(
     } catch {
       // Fall through to an SVG placeholder if the preview cannot be materialized.
     }
+  }
+
+  if (item.kind === "audio") {
+    return null;
   }
 
   const svg = `
@@ -337,7 +371,9 @@ export function createTextLibraryItem(params: {
     meta: "Text note",
     mediaWidth: null,
     mediaHeight: null,
+    mediaDurationSeconds: null,
     aspectRatioLabel: null,
+    hasAlpha: false,
     folderId: params.folderId,
     folderIds,
     storageBucket: "inline-text",
@@ -362,6 +398,8 @@ export async function createUploadedRunFileAndLibraryItem(params: {
     ? "image"
     : fileType.startsWith("video/")
       ? "video"
+      : fileType.startsWith("audio/")
+        ? "audio"
       : null;
 
   if (!kind) {
@@ -372,6 +410,7 @@ export async function createUploadedRunFileAndLibraryItem(params: {
   const mediaMetadata = await readUploadedAssetMediaMetadata({
     kind,
     previewUrl,
+    mimeType: params.file.type,
   });
   const timestamp = new Date().toISOString();
   const runFileId = createStudioId("run-file");
@@ -391,10 +430,20 @@ export async function createUploadedRunFileAndLibraryItem(params: {
     fileSizeBytes: params.file.size,
     mediaWidth: mediaMetadata.mediaWidth,
     mediaHeight: mediaMetadata.mediaHeight,
+    mediaDurationSeconds: mediaMetadata.mediaDurationSeconds,
     aspectRatioLabel: mediaMetadata.aspectRatioLabel,
+    hasAlpha: mediaMetadata.hasAlpha,
     metadata: {},
     createdAt: timestamp,
   };
+  const thumbnailUrl =
+    kind === "audio"
+      ? createAudioThumbnailUrl({
+          title: params.file.name,
+          subtitle: `${(params.file.size / 1024 / 1024).toFixed(1)} MB audio upload`,
+          accentSeed: params.file.name,
+        })
+      : previewUrl;
 
   const item: LibraryItem = {
     id: createStudioId("asset"),
@@ -407,7 +456,7 @@ export async function createUploadedRunFileAndLibraryItem(params: {
     source: "uploaded",
     role: "uploaded_source",
     previewUrl,
-    thumbnailUrl: previewUrl,
+    thumbnailUrl,
     contentText: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -416,15 +465,20 @@ export async function createUploadedRunFileAndLibraryItem(params: {
     provider: "fal",
     status: "ready",
     prompt: "",
-    meta: `${params.file.type || "File"} • ${(params.file.size / 1024 / 1024).toFixed(1)} MB`,
+    meta:
+      kind === "audio"
+        ? `${params.file.type || "Audio"} • ${(params.file.size / 1024 / 1024).toFixed(1)} MB`
+        : `${params.file.type || "File"} • ${(params.file.size / 1024 / 1024).toFixed(1)} MB`,
     mediaWidth: mediaMetadata.mediaWidth,
     mediaHeight: mediaMetadata.mediaHeight,
+    mediaDurationSeconds: mediaMetadata.mediaDurationSeconds,
     aspectRatioLabel: mediaMetadata.aspectRatioLabel,
+    hasAlpha: mediaMetadata.hasAlpha,
     folderId: params.folderId,
     folderIds,
     storageBucket: "browser-upload",
     storagePath,
-    thumbnailPath: storagePath,
+    thumbnailPath: kind === "audio" ? null : storagePath,
     fileName: params.file.name,
     mimeType: params.file.type || null,
     byteSize: params.file.size,

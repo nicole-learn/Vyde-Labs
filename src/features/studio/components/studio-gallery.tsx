@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  AudioLines,
   Check,
   Clock3,
   Copy,
@@ -25,6 +26,10 @@ import {
   getDisplayAspectRatioFromMediaMetadata,
   getLibraryItemDisplayAspectRatio,
 } from "../studio-asset-metadata";
+import {
+  getLibraryItemThumbnailUrl,
+  isTransparentImageItem,
+} from "../studio-asset-thumbnails";
 import {
   getLibraryItemPreviewMediaKind,
 } from "../studio-preview-utils";
@@ -89,6 +94,10 @@ interface CardStatusVisual {
 function getRunCardSurfaceClassName(kind: GenerationRun["kind"]) {
   if (kind === "video") {
     return "bg-[linear-gradient(180deg,#08111f_0%,#091b32_52%,#061323_100%)]";
+  }
+
+  if (kind === "audio") {
+    return "bg-[linear-gradient(180deg,#071722_0%,#0b2033_48%,#07131f_100%)]";
   }
 
   if (kind === "text") {
@@ -168,6 +177,22 @@ function getAssetStatusVisual(item: LibraryItem): CardStatusVisual | null {
     icon: Check,
     label: "Done",
   };
+}
+
+function formatMediaDurationLabel(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.round(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
 function StatusBadge({
@@ -374,6 +399,9 @@ function AssetTile({
   const { item } = displayItem;
   const previewMediaKind = getLibraryItemPreviewMediaKind(item);
   const assetStatusVisual = getAssetStatusVisual(item);
+  const thumbnailUrl = getLibraryItemThumbnailUrl(item);
+  const mediaDurationLabel = formatMediaDurationLabel(item.mediaDurationSeconds);
+  const showTransparentChecker = isTransparentImageItem(item);
 
   return (
     <div
@@ -436,13 +464,46 @@ function AssetTile({
         </div>
       ) : null}
 
-      {previewMediaKind === "image" && item.previewUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={item.thumbnailUrl ?? item.previewUrl}
-          alt={item.title}
-          className="size-full object-cover"
-        />
+      {item.kind === "audio" ? (
+        <div className="relative size-full overflow-hidden bg-[linear-gradient(180deg,rgba(9,18,28,0.96),rgba(8,20,34,0.84))]">
+          {thumbnailUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbnailUrl}
+                alt={item.title}
+                className="size-full object-cover"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.18)_58%,rgba(0,0,0,0.08)_100%)]" />
+            </>
+          ) : null}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="rounded-full bg-black/48 p-2 text-white shadow-xl backdrop-blur-sm">
+              <AudioLines className="size-4" />
+            </span>
+          </div>
+          {mediaDurationLabel ? (
+            <div className="absolute right-3 top-3 z-20 rounded-full border border-white/14 bg-black/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/82 backdrop-blur-sm">
+              {mediaDurationLabel}
+            </div>
+          ) : null}
+        </div>
+      ) : previewMediaKind === "image" && thumbnailUrl ? (
+        <div
+          className={cn(
+            "size-full",
+            showTransparentChecker
+              ? "bg-[linear-gradient(45deg,rgba(255,255,255,0.07)_25%,transparent_25%,transparent_75%,rgba(255,255,255,0.07)_75%,rgba(255,255,255,0.07)),linear-gradient(45deg,rgba(255,255,255,0.07)_25%,transparent_25%,transparent_75%,rgba(255,255,255,0.07)_75%,rgba(255,255,255,0.07))] bg-[length:22px_22px] [background-position:0_0,11px_11px]"
+              : undefined
+          )}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={thumbnailUrl}
+            alt={item.title}
+            className="size-full object-cover"
+          />
+        </div>
       ) : previewMediaKind === "video" && item.previewUrl ? (
         <div className="relative size-full">
           <video

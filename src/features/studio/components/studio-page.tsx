@@ -46,7 +46,15 @@ export function StudioPage({
     itemIds: string[];
     leadItem: Pick<
       LibraryItem,
-      "id" | "kind" | "title" | "previewUrl" | "mimeType" | "contentText" | "prompt"
+      | "id"
+      | "kind"
+      | "title"
+      | "previewUrl"
+      | "thumbnailUrl"
+      | "mimeType"
+      | "contentText"
+      | "prompt"
+      | "hasAlpha"
     >;
     x: number;
     y: number;
@@ -204,9 +212,11 @@ export function StudioPage({
         kind: params.leadItem.kind,
         title: params.leadItem.title,
         previewUrl: params.leadItem.previewUrl,
+        thumbnailUrl: params.leadItem.thumbnailUrl,
         mimeType: params.leadItem.mimeType,
         contentText: params.leadItem.contentText,
         prompt: params.leadItem.prompt,
+        hasAlpha: params.leadItem.hasAlpha,
       },
       x: params.x,
       y: params.y,

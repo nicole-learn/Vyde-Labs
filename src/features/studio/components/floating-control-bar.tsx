@@ -11,6 +11,7 @@ import {
 } from "react";
 import { cn } from "@/lib/cn";
 import { readDraggedLibraryItems } from "../studio-drag-data";
+import { canGenerateWithDraft } from "../studio-generation-rules";
 import type {
   DraftReference,
   StudioDraft,
@@ -76,7 +77,7 @@ export function FloatingControlBar({
   const dragDepthRef = useRef(0);
   const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const canGenerate = draft.prompt.trim().length > 0;
+  const canGenerate = canGenerateWithDraft(model, draft);
   const maxReferenceFiles = model.maxReferenceFiles ?? 6;
   const canAddReferences = draft.references.length < maxReferenceFiles;
   const hasReferences = draft.references.length > 0;
@@ -289,6 +290,52 @@ export function FloatingControlBar({
       });
     }
 
+    if (model.voiceOptions) {
+      pills.push({
+        id: "voice",
+        label: "Voice",
+        value: draft.voice,
+        options: model.voiceOptions.map((option) => ({
+          value: option,
+          label: option
+            .split(/[-_]/g)
+            .map((segment) =>
+              segment.length > 0
+                ? `${segment[0].toUpperCase()}${segment.slice(1)}`
+                : segment
+            )
+            .join(" "),
+        })),
+        onValueChange: (value) => onUpdateDraft({ voice: value }),
+      });
+    }
+
+    if (model.languageOptions) {
+      pills.push({
+        id: "language",
+        label: "Language",
+        value: draft.language,
+        options: model.languageOptions.map((option) => ({
+          value: option,
+          label: option,
+        })),
+        onValueChange: (value) => onUpdateDraft({ language: value }),
+      });
+    }
+
+    if (model.speakingRateOptions) {
+      pills.push({
+        id: "speaking-rate",
+        label: "Speed",
+        value: draft.speakingRate,
+        options: model.speakingRateOptions.map((option) => ({
+          value: option,
+          label: option,
+        })),
+        onValueChange: (value) => onUpdateDraft({ speakingRate: value }),
+      });
+    }
+
     if (model.kind === "video" && model.durationOptions) {
       pills.push({
         id: "duration",
@@ -322,8 +369,11 @@ export function FloatingControlBar({
     draft.aspectRatio,
     draft.durationSeconds,
     draft.includeAudio,
+    draft.language,
     draft.outputFormat,
     draft.resolution,
+    draft.speakingRate,
+    draft.voice,
     model,
     onUpdateDraft,
   ]);

@@ -20,6 +20,10 @@ function getExtensionFromMimeType(mimeType: string | null) {
   if (normalized.includes("mp4")) return "mp4";
   if (normalized.includes("webm")) return "webm";
   if (normalized.includes("quicktime")) return "mov";
+  if (normalized.includes("mpeg")) return "mp3";
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("flac")) return "flac";
+  if (normalized.includes("audio/mp4") || normalized.includes("x-m4a")) return "m4a";
   if (normalized.includes("plain")) return "txt";
 
   return null;
@@ -43,6 +47,10 @@ function getDownloadFileName(item: LibraryItem) {
 
   if (item.kind === "video") {
     return `${safeBaseName}.mp4`;
+  }
+
+  if (item.kind === "audio") {
+    return `${safeBaseName}.mp3`;
   }
 
   return `${safeBaseName}.png`;

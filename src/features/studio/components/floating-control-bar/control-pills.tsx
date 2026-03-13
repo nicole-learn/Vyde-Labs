@@ -1,6 +1,12 @@
 "use client";
 
-import { ChevronsUpDown, FileText, Image as ImageIcon, Video } from "lucide-react";
+import {
+  AudioLines,
+  ChevronsUpDown,
+  FileText,
+  Image as ImageIcon,
+  Video,
+} from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import type {
@@ -50,6 +56,10 @@ export function ModelKindIcon({
 
   if (kind === "text") {
     return <FileText className={className} />;
+  }
+
+  if (kind === "audio") {
+    return <AudioLines className={className} />;
   }
 
   return <ImageIcon className={className} />;

@@ -11,6 +11,7 @@ import {
   saveUploadedAssetFile,
 } from "./studio-browser-storage";
 import {
+  canGenerateWithDraft,
   getStudioConcurrencyLimitForMode,
   getStudioRunCompletionDelayMs,
   quoteStudioDraftCredits,
@@ -24,6 +25,7 @@ import {
   createGeneratedLibraryItem,
   createGenerationRunPreviewUrl,
   createGenerationRunSummary,
+  createRunFile,
   createStudioId,
   createStudioSeedSnapshot,
   HOSTED_STUDIO_WORKSPACE_ID,
@@ -539,28 +541,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       const model = getStudioModelById(run.modelId);
       const draft = hydrateDraft(run.draftSnapshot, model);
       const completedAt = new Date().toISOString();
-      const nextRunFileId =
-        run.kind === "text" ? null : createStudioId("run-file");
-      const nextRunFile: StudioRunFile | null =
-        run.kind === "text"
-          ? null
-          : {
-              id: nextRunFileId!,
-              runId: run.id,
-              userId: run.userId,
-              fileRole: "output",
-              sourceType: "generated",
-              storageBucket: "inline-preview",
-              storagePath: createGenerationRunPreviewUrl(model, draft),
-              mimeType: model.kind === "video" ? "video/mp4" : "image/png",
-              fileName: `${run.id}.${model.kind === "video" ? "mp4" : "png"}`,
-              fileSizeBytes: null,
-              mediaWidth: null,
-              mediaHeight: null,
-              aspectRatioLabel: draft.aspectRatio,
-              metadata: {},
-              createdAt: completedAt,
-            };
+      const nextRunFileId = run.kind === "text" ? null : createStudioId("run-file");
 
       const nextItem = createGeneratedLibraryItem({
         runFileId: nextRunFileId,
@@ -573,6 +554,24 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         userId: run.userId,
         workspaceId: run.workspaceId,
       });
+      const nextRunFile: StudioRunFile | null =
+        nextRunFileId && nextItem.previewUrl
+          ? createRunFile({
+              id: nextRunFileId,
+              runId: run.id,
+              userId: run.userId,
+              sourceType: "generated",
+              fileRole: "output",
+              previewUrl: nextItem.previewUrl,
+              fileName: nextItem.fileName ?? `${run.id}.bin`,
+              mimeType: nextItem.mimeType || "application/octet-stream",
+              mediaWidth: nextItem.mediaWidth,
+              mediaHeight: nextItem.mediaHeight,
+              mediaDurationSeconds: nextItem.mediaDurationSeconds,
+              hasAlpha: nextItem.hasAlpha,
+              createdAt: completedAt,
+            })
+          : null;
 
       setItems((current) => [nextItem, ...current]);
       setFolderItems((current) => [
@@ -1009,7 +1008,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       }
 
       if (textItems.length === 0 && referenceItems.length === 0) {
-        return "Only text, image, and video assets can be dropped here.";
+        return "Only text, image, video, and audio assets can be dropped here.";
       }
 
       return messages[0] ?? null;
@@ -1711,7 +1710,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   }, []);
 
   const generate = useCallback(() => {
-    if (!currentDraft.prompt.trim()) {
+    if (!canGenerateWithDraft(selectedModel, currentDraft)) {
       return;
     }
 
@@ -1759,12 +1758,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       modelName: selectedModel.name,
       kind: selectedModel.kind,
       provider: "fal",
-      requestMode:
-        selectedModel.kind === "image"
-          ? "text-to-image"
-          : selectedModel.kind === "video"
-            ? "text-to-video"
-            : "chat",
+      requestMode: selectedModel.requestMode,
       status: "queued",
       prompt: currentDraft.prompt,
       createdAt,
@@ -1782,6 +1776,7 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         prompt: currentDraft.prompt,
         negative_prompt: currentDraft.negativePrompt,
         reference_count: currentDraft.references.length,
+        request_mode: selectedModel.requestMode,
       },
       inputSettings: {
         aspect_ratio: currentDraft.aspectRatio,
@@ -1793,6 +1788,9 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         tone: currentDraft.tone,
         max_tokens: currentDraft.maxTokens,
         temperature: currentDraft.temperature,
+        voice: currentDraft.voice,
+        language: currentDraft.language,
+        speaking_rate: currentDraft.speakingRate,
       },
       providerRequestId: null,
       providerStatus: "queued",

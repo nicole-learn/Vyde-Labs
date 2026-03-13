@@ -1,5 +1,5 @@
-export type StudioModelKind = "image" | "video" | "text";
-export type StudioModelSection = "images" | "videos" | "text";
+export type StudioModelKind = "image" | "video" | "text" | "audio";
+export type StudioModelSection = "images" | "videos" | "text" | "audio";
 export type StudioRunStatus =
   | "pending"
   | "queued"
@@ -14,6 +14,8 @@ export type StudioAssetStatus = "ready" | "processing" | "failed";
 export type StudioGenerationRequestMode =
   | "text-to-image"
   | "text-to-video"
+  | "text-to-speech"
+  | "background-removal"
   | "chat";
 export type StudioReferenceInputKind =
   | "image"
@@ -41,14 +43,20 @@ export interface StudioModelDefinition {
   description: string;
   heroGradient: string;
   tags: string[];
+  requestMode: StudioGenerationRequestMode;
+  requiresPrompt?: boolean;
   promptPlaceholder: string;
   supportsNegativePrompt: boolean;
   supportsReferences: boolean;
+  minimumReferenceFiles?: number;
   maxReferenceFiles?: number;
   acceptedReferenceKinds?: StudioReferenceInputKind[];
   aspectRatioOptions?: string[];
   resolutionOptions?: string[];
   outputFormatOptions?: string[];
+  voiceOptions?: string[];
+  languageOptions?: string[];
+  speakingRateOptions?: string[];
   imageCountOptions?: number[];
   durationOptions?: number[];
   toneOptions?: string[];
@@ -80,6 +88,9 @@ export interface StudioDraft {
   tone: string;
   maxTokens: number;
   temperature: number;
+  voice: string;
+  language: string;
+  speakingRate: string;
   references: DraftReference[];
 }
 
@@ -114,7 +125,9 @@ export interface StudioRunFile {
   fileSizeBytes: number | null;
   mediaWidth: number | null;
   mediaHeight: number | null;
+  mediaDurationSeconds: number | null;
   aspectRatioLabel: string | null;
+  hasAlpha: boolean;
   metadata: Record<string, unknown>;
   createdAt: string;
 }
@@ -142,7 +155,9 @@ export interface LibraryItem {
   meta: string;
   mediaWidth: number | null;
   mediaHeight: number | null;
+  mediaDurationSeconds: number | null;
   aspectRatioLabel: string | null;
+  hasAlpha: boolean;
   folderId: string | null;
   folderIds: string[];
   storageBucket: string;

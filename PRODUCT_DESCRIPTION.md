@@ -6,7 +6,7 @@ Vyde Labs is a Fal-powered AI creation studio built around one idea:
 
 AI tools should feel usable, organized, and consistent the moment you open them.
 
-Instead of splitting text, image, and video creation across disconnected tools, Vyde Labs brings them into a single workspace with one shared interface. You choose a model, enter a prompt, add references when needed, run the generation, and keep what you create organized in folders.
+Instead of splitting text, image, video, speech, and utility creation across disconnected tools, Vyde Labs brings them into a single workspace with one shared interface. You choose a model, enter a prompt, add references when needed, run the generation, and keep what you create organized in folders.
 
 Vyde Labs is available in two forms:
 
@@ -24,7 +24,7 @@ The product is designed around a few core actions:
 - choosing a model
 - writing or refining a prompt
 - uploading references when a model supports them
-- generating text, images, or video
+- generating text, images, video, speech, or utility outputs like transparent cutouts
 - reviewing previous runs
 - organizing outputs into folders
 
@@ -40,13 +40,15 @@ When a user opens Vyde Labs, they enter a single workspace. From there, everythi
 
 This is what makes the product feel clean. The studio is designed to stay centered on creation, not on setup overhead.
 
-## Text, Image, and Video In One Place
+## Text, Image, Video, Speech, and Utility In One Place
 
-Vyde Labs supports three core types of creation:
+Vyde Labs supports five core types of creation:
 
 - LLM-based text generation
 - image generation
 - video generation
+- text-to-speech generation
+- background removal for transparent image cutouts
 
 All of them live inside the same studio instead of being treated like separate products.
 
@@ -58,7 +60,7 @@ For users, that means the mental model stays the same:
 - generate
 - save and organize what matters
 
-This consistency matters more than it sounds. Many AI tools force users to relearn the interface every time they switch tasks. Vyde Labs is designed so the product feels familiar whether you are asking for text, creating still images, or generating motion.
+This consistency matters more than it sounds. Many AI tools force users to relearn the interface every time they switch tasks. Vyde Labs is designed so the product feels familiar whether you are asking for text, creating still images, generating motion, voicing a script, or cleaning up an image for compositing.
 
 ## Why Folders Are A Core Feature
 
@@ -201,11 +203,11 @@ That matters because many creative workflows begin with language:
 - refining prompt language
 - developing creative briefs
 
-In Vyde Labs, LLM access belongs in the same space as image and video generation. Users should not have to leave the product to move from language to visuals or from visuals back to language.
+In Vyde Labs, LLM access belongs in the same space as image, video, speech, and utility generation. Users should not have to leave the product to move from language to visuals, from visuals to speech, or from cleanup tools back to language.
 
 For users, the important thing is simple:
 
-- text, image, and video live together
+- text, image, video, speech, and utility models live together
 - the interface stays consistent
 - the workspace stays organized in one place
 

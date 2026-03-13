@@ -7,6 +7,10 @@ import {
   createMediaMetadataFromAspectRatioLabel,
   formatAspectRatioLabel,
 } from "./studio-asset-metadata";
+import {
+  createAudioThumbnailForModel,
+  createAudioThumbnailUrl,
+} from "./studio-asset-thumbnails";
 import type {
   GenerationRun,
   LibraryItem,
@@ -28,7 +32,7 @@ export const LOCAL_STUDIO_WORKSPACE_ID = "workspace-local";
 export const HOSTED_STUDIO_WORKSPACE_ID = "workspace-hosted";
 export const LOCAL_STUDIO_USER_ID = "user-local";
 export const HOSTED_STUDIO_USER_ID = "user-hosted";
-export const STUDIO_STATE_SCHEMA_VERSION = 2;
+export const STUDIO_STATE_SCHEMA_VERSION = 3;
 
 const MOCK_MEDIA = {
   generatedImage: {
@@ -42,8 +46,35 @@ const MOCK_MEDIA = {
     previewUrl: "/mock-media/nasa-winston-clip.mp4",
     mediaWidth: 960,
     mediaHeight: 540,
+    mediaDurationSeconds: 6,
     fileName: "nasa-winston-clip.mp4",
     mimeType: "video/mp4",
+  },
+  generatedAudioMp3: {
+    previewUrl: "/mock-media/vydelabs-voiceover-sample.mp3",
+    mediaDurationSeconds: 6,
+    fileName: "vydelabs-voiceover-sample.mp3",
+    mimeType: "audio/mpeg",
+  },
+  generatedAudioWav: {
+    previewUrl: "/mock-media/vydelabs-voiceover-sample.wav",
+    mediaDurationSeconds: 6,
+    fileName: "vydelabs-voiceover-sample.wav",
+    mimeType: "audio/wav",
+  },
+  generatedAudioFlac: {
+    previewUrl: "/mock-media/vydelabs-voiceover-sample.flac",
+    mediaDurationSeconds: 6,
+    fileName: "vydelabs-voiceover-sample.flac",
+    mimeType: "audio/flac",
+  },
+  generatedCutoutImage: {
+    previewUrl: "/mock-media/product-cutout.png",
+    mediaWidth: 1400,
+    mediaHeight: 1400,
+    fileName: "product-cutout.png",
+    mimeType: "image/png",
+    hasAlpha: true,
   },
   uploadedImage: {
     previewUrl: "/mock-media/jacmel-beach.jpg",
@@ -56,8 +87,15 @@ const MOCK_MEDIA = {
     previewUrl: "/mock-media/moon-passing-earth-clip.mp4",
     mediaWidth: 960,
     mediaHeight: 540,
+    mediaDurationSeconds: 6,
     fileName: "moon-passing-earth-clip.mp4",
     mimeType: "video/mp4",
+  },
+  uploadedAudio: {
+    previewUrl: "/mock-media/vydelabs-uploaded-voice-note.mp3",
+    mediaDurationSeconds: 5,
+    fileName: "vydelabs-uploaded-voice-note.mp3",
+    mimeType: "audio/mpeg",
   },
 } as const;
 
@@ -71,26 +109,35 @@ const SEED_FOLDER_IDS = {
 
 const SEED_RUN_IDS = {
   completedImage: "run-completed-image",
+  completedCutoutImage: "run-completed-cutout-image",
   completedVideo: "run-completed-video",
+  completedAudio: "run-completed-audio",
   completedText: "run-completed-text",
   queuedImage: "run-queued-image",
   processingVideo: "run-processing-video",
+  processingAudio: "run-processing-audio",
   failedText: "run-failed-text",
 } as const;
 
 const SEED_RUN_FILE_IDS = {
   generatedImage: "run-file-generated-image",
+  generatedCutoutImage: "run-file-generated-cutout-image",
   generatedVideo: "run-file-generated-video",
+  generatedAudio: "run-file-generated-audio",
   uploadedImage: "run-file-uploaded-image",
   uploadedVideo: "run-file-uploaded-video",
+  uploadedAudio: "run-file-uploaded-audio",
 } as const;
 
 const SEED_ASSET_IDS = {
   generatedImage: "asset-generated-image",
+  generatedCutoutImage: "asset-generated-cutout-image",
   generatedVideo: "asset-generated-video",
+  generatedAudio: "asset-generated-audio",
   generatedText: "asset-generated-text",
   uploadedImage: "asset-uploaded-image",
   uploadedVideo: "asset-uploaded-video",
+  uploadedAudio: "asset-uploaded-audio",
   uploadedText: "asset-uploaded-text",
 } as const;
 
@@ -130,7 +177,19 @@ export function toPersistedDraft(draft: StudioDraft): PersistedStudioDraft {
     tone: draft.tone,
     maxTokens: draft.maxTokens,
     temperature: draft.temperature,
+    voice: draft.voice,
+    language: draft.language,
+    speakingRate: draft.speakingRate,
   };
+}
+
+function escapeSvgText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function createDraftSnapshot(
@@ -153,8 +212,17 @@ function createPreviewSvg({
   kind: StudioModelKind;
   background: string;
 }) {
-  const badge = kind === "video" ? "VIDEO" : kind === "text" ? "TEXT" : "IMAGE";
+  const badge =
+    kind === "video"
+      ? "VIDEO"
+      : kind === "text"
+        ? "TEXT"
+        : kind === "audio"
+          ? "AUDIO"
+          : "IMAGE";
   const [backgroundStart, backgroundEnd] = background.split("|");
+  const safeTitle = escapeSvgText(title);
+  const safeSubtitle = escapeSvgText(subtitle);
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
       <defs>
@@ -166,10 +234,10 @@ function createPreviewSvg({
       <rect width="1200" height="900" fill="url(#bg)" rx="48" />
       <rect x="48" y="48" width="1104" height="804" rx="36" fill="rgba(11,15,25,0.36)" stroke="rgba(255,255,255,0.18)" />
       <text x="96" y="132" fill="rgba(255,255,255,0.75)" font-size="32" font-family="Arial, Helvetica, sans-serif" letter-spacing="4">${badge}</text>
-      <text x="96" y="250" fill="#ffffff" font-size="76" font-weight="700" font-family="Arial, Helvetica, sans-serif">${title}</text>
+      <text x="96" y="250" fill="#ffffff" font-size="76" font-weight="700" font-family="Arial, Helvetica, sans-serif">${safeTitle}</text>
       <foreignObject x="96" y="300" width="850" height="300">
         <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, Helvetica, sans-serif; font-size: 34px; line-height: 1.45; color: rgba(255,255,255,0.78);">
-          ${subtitle}
+          ${safeSubtitle}
         </div>
       </foreignObject>
       ${
@@ -188,6 +256,7 @@ function getPreviewBackgroundPairs(): Record<StudioModelKind, string> {
     image: "#38bdf8|#0f172a",
     video: "#0ea5e9|#082f49",
     text: "#60a5fa|#1e1b4b",
+    audio: "#22d3ee|#0f172a",
   };
 }
 
@@ -202,6 +271,13 @@ function getMimeTypeFromPreviewUrl(params: {
     return "video/mp4";
   }
 
+  if (params.kind === "audio") {
+    if (previewUrl.endsWith(".wav")) return "audio/wav";
+    if (previewUrl.endsWith(".flac")) return "audio/flac";
+    if (previewUrl.endsWith(".mp3")) return "audio/mpeg";
+    return "audio/mp4";
+  }
+
   if (previewUrl.endsWith(".jpg") || previewUrl.endsWith(".jpeg")) {
     return "image/jpeg";
   }
@@ -210,6 +286,21 @@ function getMimeTypeFromPreviewUrl(params: {
   }
 
   return "image/png";
+}
+
+function getGeneratedAudioMedia(params: {
+  modelId: string;
+  outputFormat: string;
+}) {
+  if (params.modelId === "orpheus-tts") {
+    return MOCK_MEDIA.generatedAudioWav;
+  }
+
+  if (params.outputFormat === "flac") {
+    return MOCK_MEDIA.generatedAudioFlac;
+  }
+
+  return MOCK_MEDIA.generatedAudioMp3;
 }
 
 function createStoragePath(fileName: string) {
@@ -321,7 +412,7 @@ function createFolderMemberships(items: LibraryItem[]): StudioFolderItem[] {
   );
 }
 
-function createRunFile(params: {
+export function createRunFile(params: {
   id: string;
   runId: string | null;
   userId: string;
@@ -332,6 +423,8 @@ function createRunFile(params: {
   mimeType: string;
   mediaWidth: number | null;
   mediaHeight: number | null;
+  mediaDurationSeconds?: number | null;
+  hasAlpha?: boolean;
   createdAt: string;
   fileSizeBytes?: number | null;
 }) {
@@ -351,10 +444,12 @@ function createRunFile(params: {
     fileSizeBytes: params.fileSizeBytes ?? null,
     mediaWidth: params.mediaWidth,
     mediaHeight: params.mediaHeight,
+    mediaDurationSeconds: params.mediaDurationSeconds ?? null,
     aspectRatioLabel: formatAspectRatioLabel({
       mediaWidth: params.mediaWidth,
       mediaHeight: params.mediaHeight,
     }),
+    hasAlpha: params.hasAlpha ?? false,
     metadata: {},
     createdAt: params.createdAt,
   } satisfies StudioRunFile;
@@ -371,11 +466,14 @@ export function createGeneratedLibraryItem(params: {
   userId: string;
   workspaceId: string;
   previewUrlOverride?: string | null;
+  thumbnailUrlOverride?: string | null;
   runId?: string | null;
   mediaWidthOverride?: number | null;
   mediaHeightOverride?: number | null;
+  mediaDurationSecondsOverride?: number | null;
   fileNameOverride?: string | null;
   mimeTypeOverride?: string | null;
+  hasAlphaOverride?: boolean;
 }): LibraryItem {
   const title = params.draft.prompt.trim().slice(0, 40) || params.model.name;
   const backgroundPairs = getPreviewBackgroundPairs();
@@ -411,7 +509,9 @@ export function createGeneratedLibraryItem(params: {
       meta: `${params.model.name} • ${params.draft.maxTokens} max tokens • ${params.draft.tone}`,
       mediaWidth: null,
       mediaHeight: null,
+      mediaDurationSeconds: null,
       aspectRatioLabel: null,
+      hasAlpha: false,
       folderId: params.folderId,
       folderIds,
       storageBucket: "inline-text",
@@ -427,8 +527,20 @@ export function createGeneratedLibraryItem(params: {
     };
   }
 
+  const defaultGeneratedMedia =
+    params.model.kind === "audio"
+      ? getGeneratedAudioMedia({
+          modelId: params.model.id,
+          outputFormat: params.draft.outputFormat,
+        })
+      : params.model.requestMode === "background-removal"
+        ? MOCK_MEDIA.generatedCutoutImage
+        : params.model.kind === "video"
+          ? MOCK_MEDIA.generatedVideo
+          : MOCK_MEDIA.generatedImage;
   const previewUrl =
     params.previewUrlOverride ??
+    defaultGeneratedMedia.previewUrl ??
     createPreviewSvg({
       title: params.model.name,
       subtitle:
@@ -436,17 +548,52 @@ export function createGeneratedLibraryItem(params: {
       kind: params.model.kind,
       background: backgroundPairs[params.model.kind],
     });
+  const thumbnailUrl =
+    params.thumbnailUrlOverride ??
+    (params.model.kind === "audio"
+      ? createAudioThumbnailForModel({
+          model: params.model,
+          title: params.model.name,
+          subtitle: params.draft.prompt.trim() || "Generated speech preview",
+        })
+      : previewUrl);
   const mediaMetadata = createMediaMetadataFromAspectRatioLabel(
     params.model.kind,
     params.draft.aspectRatio
   );
-  const mediaWidth = params.mediaWidthOverride ?? mediaMetadata.mediaWidth;
-  const mediaHeight = params.mediaHeightOverride ?? mediaMetadata.mediaHeight;
+  const defaultMediaWidth =
+    "mediaWidth" in defaultGeneratedMedia ? defaultGeneratedMedia.mediaWidth ?? null : null;
+  const defaultMediaHeight =
+    "mediaHeight" in defaultGeneratedMedia ? defaultGeneratedMedia.mediaHeight ?? null : null;
+  const mediaWidth =
+    params.mediaWidthOverride ??
+    defaultMediaWidth ??
+    mediaMetadata.mediaWidth;
+  const mediaHeight =
+    params.mediaHeightOverride ??
+    defaultMediaHeight ??
+    mediaMetadata.mediaHeight;
+  const mediaDurationSeconds =
+    params.mediaDurationSecondsOverride ??
+    ("mediaDurationSeconds" in defaultGeneratedMedia
+      ? defaultGeneratedMedia.mediaDurationSeconds ?? null
+      : null);
+  const hasAlpha =
+    params.hasAlphaOverride ??
+    ("hasAlpha" in defaultGeneratedMedia ? defaultGeneratedMedia.hasAlpha ?? false : false);
   const fileName =
     params.fileNameOverride ??
-    `${createStoragePath(title)}.${params.model.kind === "video" ? "mp4" : "png"}`;
+    defaultGeneratedMedia.fileName ??
+    `${createStoragePath(title)}.${
+      params.model.kind === "video"
+        ? "mp4"
+        : params.model.kind === "audio"
+          ? "mp3"
+          : "png"
+    }`;
   const mimeType =
     params.mimeTypeOverride ??
+    defaultGeneratedMedia.mimeType ??
     getMimeTypeFromPreviewUrl({
       kind: params.model.kind,
       previewUrl,
@@ -463,7 +610,7 @@ export function createGeneratedLibraryItem(params: {
     source: "generated",
     role: "generated_output",
     previewUrl,
-    thumbnailUrl: previewUrl,
+    thumbnailUrl,
     contentText: null,
     createdAt: params.createdAt,
     updatedAt: params.createdAt,
@@ -473,24 +620,36 @@ export function createGeneratedLibraryItem(params: {
     status: "ready",
     prompt: params.draft.prompt,
     meta:
-      params.model.kind === "image"
+      params.model.requestMode === "background-removal"
+        ? `${params.model.name} • Transparent PNG`
+        : params.model.kind === "image"
         ? `${params.model.name} • ${params.draft.aspectRatio} • ${params.draft.resolution}`
+        : params.model.kind === "audio"
+          ? `${params.model.name} • TTS • ${params.draft.outputFormat.toUpperCase()}`
         : `${params.model.name} • ${params.draft.durationSeconds}s • ${params.draft.resolution}`,
     mediaWidth,
     mediaHeight,
+    mediaDurationSeconds,
     aspectRatioLabel:
-      formatAspectRatioLabel({ mediaWidth, mediaHeight }) ?? params.draft.aspectRatio,
+      params.model.kind === "audio"
+        ? null
+        : formatAspectRatioLabel({ mediaWidth, mediaHeight }) ?? params.draft.aspectRatio,
+    hasAlpha,
     folderId: params.folderId,
     folderIds,
     storageBucket: previewUrl.startsWith("/mock-media/") ? "mock-public" : "inline-preview",
     storagePath: previewUrl.startsWith("/") ? previewUrl.replace(/^\//, "") : previewUrl,
-    thumbnailPath: previewUrl.startsWith("/") ? previewUrl.replace(/^\//, "") : previewUrl,
+    thumbnailPath: thumbnailUrl.startsWith("/") ? thumbnailUrl.replace(/^\//, "") : null,
     fileName,
     mimeType,
     byteSize: null,
     metadata: {
       output_format: params.draft.outputFormat,
       resolution: params.draft.resolution,
+      request_mode: params.model.requestMode,
+      voice: params.draft.voice,
+      language: params.draft.language,
+      speaking_rate: params.draft.speakingRate,
     },
     errorMessage: null,
   };
@@ -500,6 +659,14 @@ export function createGenerationRunSummary(
   model: StudioModelDefinition,
   draft: StudioDraft
 ) {
+  if (model.kind === "audio") {
+    return `${draft.outputFormat.toUpperCase()} • TTS`;
+  }
+
+  if (model.requestMode === "background-removal") {
+    return "Transparent PNG • 1 image";
+  }
+
   if (model.kind === "image") {
     return `${draft.imageCount} image • ${draft.aspectRatio} • ${draft.resolution}`;
   }
@@ -515,6 +682,14 @@ export function createGenerationRunPreviewUrl(
   model: StudioModelDefinition,
   draft: StudioDraft
 ) {
+  if (model.kind === "audio") {
+    return createAudioThumbnailForModel({
+      model,
+      title: model.name,
+      subtitle: draft.prompt.trim() || "Queued workspace speech generation",
+    });
+  }
+
   return createPreviewSvg({
     title: model.name,
     subtitle:
@@ -534,14 +709,17 @@ function createMockUploadedSeedItem(params: {
   workspaceId: string;
   title: string;
   prompt: string;
-  kind: "image" | "video" | "text";
+  kind: "image" | "video" | "text" | "audio";
   createdAt: string;
   folderId: string | null;
   previewUrlOverride?: string | null;
+  thumbnailUrlOverride?: string | null;
   mediaWidth?: number | null;
   mediaHeight?: number | null;
+  mediaDurationSeconds?: number | null;
   fileName?: string | null;
   mimeType?: string | null;
+  hasAlpha?: boolean;
 }): LibraryItem {
   const previewUrl =
     params.kind === "text"
@@ -554,8 +732,21 @@ function createMockUploadedSeedItem(params: {
           background:
             params.kind === "video"
               ? "#1d4ed8|#0f172a"
-              : "#38bdf8|#082f49",
+              : params.kind === "audio"
+                ? "#38bdf8|#082f49"
+                : "#38bdf8|#082f49",
         });
+  const thumbnailUrl =
+    params.kind === "text"
+      ? null
+      : params.thumbnailUrlOverride ??
+        (params.kind === "audio"
+          ? createAudioThumbnailUrl({
+              title: params.title,
+              subtitle: params.prompt || "Uploaded audio source",
+              accentSeed: params.title,
+            })
+          : previewUrl);
   const folderIds = params.folderId ? [params.folderId] : [];
   const mimeType =
     params.kind === "text"
@@ -567,7 +758,9 @@ function createMockUploadedSeedItem(params: {
         });
   const fileName =
     params.fileName ??
-    `${createStoragePath(params.title)}.${params.kind === "video" ? "mp4" : "jpg"}`;
+    `${createStoragePath(params.title)}.${
+      params.kind === "video" ? "mp4" : params.kind === "audio" ? "mp3" : "jpg"
+    }`;
 
   return {
     id: params.id,
@@ -578,9 +771,12 @@ function createMockUploadedSeedItem(params: {
     title: params.title,
     kind: params.kind,
     source: "uploaded",
-    role: params.kind === "text" ? "text_note" : "uploaded_source",
+    role:
+      params.kind === "text"
+        ? "text_note"
+        : "uploaded_source",
     previewUrl,
-    thumbnailUrl: previewUrl,
+    thumbnailUrl,
     contentText: params.kind === "text" ? params.prompt : null,
     createdAt: params.createdAt,
     updatedAt: params.createdAt,
@@ -594,23 +790,34 @@ function createMockUploadedSeedItem(params: {
         ? "Text note"
         : params.kind === "video"
           ? "Uploaded video • Mock source"
+          : params.kind === "audio"
+            ? "Uploaded audio • Mock source"
           : "Uploaded image • Mock source",
     mediaWidth: params.kind === "text" ? null : (params.mediaWidth ?? null),
     mediaHeight: params.kind === "text" ? null : (params.mediaHeight ?? null),
+    mediaDurationSeconds:
+      params.kind === "audio" || params.kind === "video"
+        ? params.mediaDurationSeconds ?? null
+        : null,
     aspectRatioLabel:
-      params.kind === "text"
+      params.kind === "text" || params.kind === "audio"
         ? null
         : formatAspectRatioLabel({
             mediaWidth: params.mediaWidth,
             mediaHeight: params.mediaHeight,
           }),
+    hasAlpha: params.hasAlpha ?? false,
     folderId: params.folderId,
     folderIds,
     storageBucket: params.kind === "text" ? "inline-text" : "mock-public",
     storagePath:
       params.kind === "text" ? null : previewUrl?.replace(/^\//, "") ?? null,
     thumbnailPath:
-      params.kind === "text" ? null : previewUrl?.replace(/^\//, "") ?? null,
+      params.kind === "text"
+        ? null
+        : thumbnailUrl?.startsWith("/")
+          ? thumbnailUrl.replace(/^\//, "")
+          : null,
     fileName,
     mimeType,
     byteSize: params.prompt.length * 32,
@@ -634,11 +841,7 @@ function createMockGenerationRun(params: {
   outputAssetId?: string | null;
 }) {
   const requestMode =
-    params.model.kind === "image"
-      ? "text-to-image"
-      : params.model.kind === "video"
-        ? "text-to-video"
-        : "chat";
+    params.model.requestMode;
 
   return {
     id: params.id,
@@ -681,6 +884,9 @@ function createMockGenerationRun(params: {
       tone: params.draft.tone,
       max_tokens: params.draft.maxTokens,
       temperature: params.draft.temperature,
+      voice: params.draft.voice,
+      language: params.draft.language,
+      speaking_rate: params.draft.speakingRate,
     },
     providerRequestId:
       params.status === "queued" || params.status === "pending"
@@ -696,8 +902,28 @@ function createMockGenerationRun(params: {
             : "queued",
     estimatedCostUsd: null,
     actualCostUsd: null,
-    estimatedCredits: params.model.kind === "video" ? 14 : params.model.kind === "image" ? 6 : 1,
-    actualCredits: params.status === "completed" ? params.model.kind === "video" ? 14 : params.model.kind === "image" ? 6 : 1 : null,
+    estimatedCredits:
+      params.model.requestMode === "background-removal"
+        ? 1
+        : params.model.kind === "audio"
+          ? 2
+          : params.model.kind === "video"
+            ? 14
+            : params.model.kind === "image"
+              ? 6
+              : 1,
+    actualCredits:
+      params.status === "completed"
+        ? params.model.requestMode === "background-removal"
+          ? 1
+          : params.model.kind === "audio"
+            ? 2
+            : params.model.kind === "video"
+              ? 14
+              : params.model.kind === "image"
+                ? 6
+                : 1
+        : null,
     usageSnapshot: {},
     outputText: params.model.kind === "text" && params.status === "completed"
       ? "Mock generated text output"
@@ -729,7 +955,9 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
   const userId = getUserId(mode);
   const workspaceId = getWorkspaceId(mode);
   const imageModel = getStudioModelById("nano-banana-2");
+  const backgroundRemovalModel = getStudioModelById("bria-background-remove");
   const videoModel = getStudioModelById("veo-3.1");
+  const audioModel = getStudioModelById("minimax-speech-2.8-hd");
   const textModel = getStudioModelById("gemini-flash");
 
   const imageDraft = {
@@ -737,10 +965,19 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
     prompt:
       "Editorial sneaker still life with chrome reflections and soft studio haze",
   };
+  const cutoutDraft = {
+    ...createDraft(backgroundRemovalModel),
+    prompt: "Remove the background and keep the cutout clean around the product edges.",
+  };
   const videoDraft = {
     ...createDraft(videoModel),
     prompt:
       "Slow push-in on a luxury skincare bottle rotating on wet black stone",
+  };
+  const audioDraft = {
+    ...createDraft(audioModel),
+    prompt:
+      "Vyde Labs turns one prompt into images, video, text, speech, and clean production-ready assets in one workspace.",
   };
   const textDraft = {
     ...createDraft(textModel),
@@ -749,14 +986,18 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
 
   const createdAt = [
     "2026-03-13T17:46:00.000Z",
+    "2026-03-13T17:38:00.000Z",
     "2026-03-13T17:19:00.000Z",
+    "2026-03-13T17:02:00.000Z",
     "2026-03-13T16:45:00.000Z",
     "2026-03-13T16:28:00.000Z",
     "2026-03-13T15:52:00.000Z",
+    "2026-03-13T15:27:00.000Z",
     "2026-03-13T15:08:00.000Z",
     "2026-03-13T17:56:00.000Z",
     "2026-03-13T17:53:00.000Z",
-    "2026-03-13T17:51:00.000Z",
+    "2026-03-13T17:49:00.000Z",
+    "2026-03-13T17:47:00.000Z",
   ];
 
   const runFiles: StudioRunFile[] = [
@@ -774,6 +1015,20 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       createdAt: createdAt[0],
     }),
     createRunFile({
+      id: SEED_RUN_FILE_IDS.generatedCutoutImage,
+      runId: SEED_RUN_IDS.completedCutoutImage,
+      userId,
+      sourceType: "generated",
+      fileRole: "output",
+      previewUrl: MOCK_MEDIA.generatedCutoutImage.previewUrl,
+      fileName: MOCK_MEDIA.generatedCutoutImage.fileName,
+      mimeType: MOCK_MEDIA.generatedCutoutImage.mimeType,
+      mediaWidth: MOCK_MEDIA.generatedCutoutImage.mediaWidth,
+      mediaHeight: MOCK_MEDIA.generatedCutoutImage.mediaHeight,
+      hasAlpha: true,
+      createdAt: createdAt[1],
+    }),
+    createRunFile({
       id: SEED_RUN_FILE_IDS.generatedVideo,
       runId: SEED_RUN_IDS.completedVideo,
       userId,
@@ -784,7 +1039,22 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       mimeType: MOCK_MEDIA.generatedVideo.mimeType,
       mediaWidth: MOCK_MEDIA.generatedVideo.mediaWidth,
       mediaHeight: MOCK_MEDIA.generatedVideo.mediaHeight,
-      createdAt: createdAt[1],
+      mediaDurationSeconds: MOCK_MEDIA.generatedVideo.mediaDurationSeconds,
+      createdAt: createdAt[2],
+    }),
+    createRunFile({
+      id: SEED_RUN_FILE_IDS.generatedAudio,
+      runId: SEED_RUN_IDS.completedAudio,
+      userId,
+      sourceType: "generated",
+      fileRole: "output",
+      previewUrl: MOCK_MEDIA.generatedAudioMp3.previewUrl,
+      fileName: MOCK_MEDIA.generatedAudioMp3.fileName,
+      mimeType: MOCK_MEDIA.generatedAudioMp3.mimeType,
+      mediaWidth: null,
+      mediaHeight: null,
+      mediaDurationSeconds: MOCK_MEDIA.generatedAudioMp3.mediaDurationSeconds,
+      createdAt: createdAt[3],
     }),
     createRunFile({
       id: SEED_RUN_FILE_IDS.uploadedImage,
@@ -797,7 +1067,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       mimeType: MOCK_MEDIA.uploadedImage.mimeType,
       mediaWidth: MOCK_MEDIA.uploadedImage.mediaWidth,
       mediaHeight: MOCK_MEDIA.uploadedImage.mediaHeight,
-      createdAt: createdAt[3],
+      createdAt: createdAt[5],
     }),
     createRunFile({
       id: SEED_RUN_FILE_IDS.uploadedVideo,
@@ -810,7 +1080,22 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       mimeType: MOCK_MEDIA.uploadedVideo.mimeType,
       mediaWidth: MOCK_MEDIA.uploadedVideo.mediaWidth,
       mediaHeight: MOCK_MEDIA.uploadedVideo.mediaHeight,
-      createdAt: createdAt[4],
+      mediaDurationSeconds: MOCK_MEDIA.uploadedVideo.mediaDurationSeconds,
+      createdAt: createdAt[6],
+    }),
+    createRunFile({
+      id: SEED_RUN_FILE_IDS.uploadedAudio,
+      runId: null,
+      userId,
+      sourceType: "uploaded",
+      fileRole: "input",
+      previewUrl: MOCK_MEDIA.uploadedAudio.previewUrl,
+      fileName: MOCK_MEDIA.uploadedAudio.fileName,
+      mimeType: MOCK_MEDIA.uploadedAudio.mimeType,
+      mediaWidth: null,
+      mediaHeight: null,
+      mediaDurationSeconds: MOCK_MEDIA.uploadedAudio.mediaDurationSeconds,
+      createdAt: createdAt[7],
     }),
   ];
 
@@ -833,19 +1118,54 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       workspaceId,
     }),
     createGeneratedLibraryItem({
+      id: SEED_ASSET_IDS.generatedCutoutImage,
+      runFileId: SEED_RUN_FILE_IDS.generatedCutoutImage,
+      sourceRunId: SEED_RUN_IDS.completedCutoutImage,
+      model: backgroundRemovalModel,
+      draft: cutoutDraft,
+      createdAt: createdAt[1],
+      folderId: folders[0].id,
+      previewUrlOverride: MOCK_MEDIA.generatedCutoutImage.previewUrl,
+      mediaWidthOverride: MOCK_MEDIA.generatedCutoutImage.mediaWidth,
+      mediaHeightOverride: MOCK_MEDIA.generatedCutoutImage.mediaHeight,
+      fileNameOverride: MOCK_MEDIA.generatedCutoutImage.fileName,
+      mimeTypeOverride: MOCK_MEDIA.generatedCutoutImage.mimeType,
+      hasAlphaOverride: true,
+      runId: SEED_RUN_IDS.completedCutoutImage,
+      userId,
+      workspaceId,
+    }),
+    createGeneratedLibraryItem({
       id: SEED_ASSET_IDS.generatedVideo,
       runFileId: SEED_RUN_FILE_IDS.generatedVideo,
       sourceRunId: SEED_RUN_IDS.completedVideo,
       model: videoModel,
       draft: videoDraft,
-      createdAt: createdAt[1],
+      createdAt: createdAt[2],
       folderId: folders[1].id,
       previewUrlOverride: MOCK_MEDIA.generatedVideo.previewUrl,
       mediaWidthOverride: MOCK_MEDIA.generatedVideo.mediaWidth,
       mediaHeightOverride: MOCK_MEDIA.generatedVideo.mediaHeight,
+      mediaDurationSecondsOverride: MOCK_MEDIA.generatedVideo.mediaDurationSeconds,
       fileNameOverride: MOCK_MEDIA.generatedVideo.fileName,
       mimeTypeOverride: MOCK_MEDIA.generatedVideo.mimeType,
       runId: SEED_RUN_IDS.completedVideo,
+      userId,
+      workspaceId,
+    }),
+    createGeneratedLibraryItem({
+      id: SEED_ASSET_IDS.generatedAudio,
+      runFileId: SEED_RUN_FILE_IDS.generatedAudio,
+      sourceRunId: SEED_RUN_IDS.completedAudio,
+      model: audioModel,
+      draft: audioDraft,
+      createdAt: createdAt[3],
+      folderId: folders[2].id,
+      previewUrlOverride: MOCK_MEDIA.generatedAudioMp3.previewUrl,
+      mediaDurationSecondsOverride: MOCK_MEDIA.generatedAudioMp3.mediaDurationSeconds,
+      fileNameOverride: MOCK_MEDIA.generatedAudioMp3.fileName,
+      mimeTypeOverride: MOCK_MEDIA.generatedAudioMp3.mimeType,
+      runId: SEED_RUN_IDS.completedAudio,
       userId,
       workspaceId,
     }),
@@ -855,7 +1175,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       sourceRunId: SEED_RUN_IDS.completedText,
       model: textModel,
       draft: textDraft,
-      createdAt: createdAt[2],
+      createdAt: createdAt[4],
       folderId: folders[2].id,
       runId: SEED_RUN_IDS.completedText,
       userId,
@@ -869,7 +1189,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       title: "Desk composition reference",
       prompt: "Warm editorial workspace with layered wood tones and late-afternoon window light",
       kind: "image",
-      createdAt: createdAt[3],
+      createdAt: createdAt[5],
       folderId: folders[0].id,
       previewUrlOverride: MOCK_MEDIA.uploadedImage.previewUrl,
       mediaWidth: MOCK_MEDIA.uploadedImage.mediaWidth,
@@ -885,13 +1205,30 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       title: "Camera move study",
       prompt: "Slow dolly across a tabletop scene with shallow depth and reflective highlights",
       kind: "video",
-      createdAt: createdAt[4],
+      createdAt: createdAt[6],
       folderId: null,
       previewUrlOverride: MOCK_MEDIA.uploadedVideo.previewUrl,
       mediaWidth: MOCK_MEDIA.uploadedVideo.mediaWidth,
       mediaHeight: MOCK_MEDIA.uploadedVideo.mediaHeight,
+      mediaDurationSeconds: MOCK_MEDIA.uploadedVideo.mediaDurationSeconds,
       fileName: MOCK_MEDIA.uploadedVideo.fileName,
       mimeType: MOCK_MEDIA.uploadedVideo.mimeType,
+    }),
+    createMockUploadedSeedItem({
+      id: SEED_ASSET_IDS.uploadedAudio,
+      runFileId: SEED_RUN_FILE_IDS.uploadedAudio,
+      userId,
+      workspaceId,
+      title: "Voice note reference",
+      prompt:
+        "Calm, clear product narration with a confident but conversational delivery.",
+      kind: "audio",
+      createdAt: createdAt[7],
+      folderId: folders[1].id,
+      previewUrlOverride: MOCK_MEDIA.uploadedAudio.previewUrl,
+      mediaDurationSeconds: MOCK_MEDIA.uploadedAudio.mediaDurationSeconds,
+      fileName: MOCK_MEDIA.uploadedAudio.fileName,
+      mimeType: MOCK_MEDIA.uploadedAudio.mimeType,
     }),
     createMockUploadedSeedItem({
       id: SEED_ASSET_IDS.uploadedText,
@@ -902,7 +1239,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       prompt:
         "Turn the desk scene into three visual directions: luxury editorial, quiet productivity, and cinematic twilight.",
       kind: "text",
-      createdAt: createdAt[5],
+      createdAt: createdAt[8],
       folderId: folders[1].id,
     }),
   ];
@@ -920,32 +1257,54 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       outputAssetId: items[0].id,
     }),
     createMockGenerationRun({
-      id: SEED_RUN_IDS.completedVideo,
+      id: SEED_RUN_IDS.completedCutoutImage,
       userId,
       workspaceId,
       createdAt: createdAt[1],
+      draft: cutoutDraft,
+      folderId: folders[0].id,
+      model: backgroundRemovalModel,
+      status: "completed",
+      outputAssetId: items[1].id,
+    }),
+    createMockGenerationRun({
+      id: SEED_RUN_IDS.completedVideo,
+      userId,
+      workspaceId,
+      createdAt: createdAt[2],
       draft: videoDraft,
       folderId: folders[1].id,
       model: videoModel,
       status: "completed",
-      outputAssetId: items[1].id,
+      outputAssetId: items[2].id,
+    }),
+    createMockGenerationRun({
+      id: SEED_RUN_IDS.completedAudio,
+      userId,
+      workspaceId,
+      createdAt: createdAt[3],
+      draft: audioDraft,
+      folderId: folders[2].id,
+      model: audioModel,
+      status: "completed",
+      outputAssetId: items[3].id,
     }),
     createMockGenerationRun({
       id: SEED_RUN_IDS.completedText,
       userId,
       workspaceId,
-      createdAt: createdAt[2],
+      createdAt: createdAt[4],
       draft: textDraft,
       folderId: folders[2].id,
       model: textModel,
       status: "completed",
-      outputAssetId: items[2].id,
+      outputAssetId: items[4].id,
     }),
     createMockGenerationRun({
       id: SEED_RUN_IDS.queuedImage,
       userId,
       workspaceId,
-      createdAt: createdAt[6],
+      createdAt: createdAt[9],
       draft: {
         ...createDraft(imageModel),
         prompt:
@@ -959,7 +1318,7 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       id: SEED_RUN_IDS.processingVideo,
       userId,
       workspaceId,
-      createdAt: createdAt[7],
+      createdAt: createdAt[10],
       draft: {
         ...createDraft(videoModel),
         prompt:
@@ -970,10 +1329,24 @@ export function createStudioSeedSnapshot(mode: StudioAppMode): StudioWorkspaceSn
       status: "processing",
     }),
     createMockGenerationRun({
+      id: SEED_RUN_IDS.processingAudio,
+      userId,
+      workspaceId,
+      createdAt: createdAt[11],
+      draft: {
+        ...createDraft(audioModel),
+        prompt:
+          "A friendly onboarding voiceover that explains how to group assets into folders and reuse them.",
+      },
+      folderId: folders[2].id,
+      model: audioModel,
+      status: "processing",
+    }),
+    createMockGenerationRun({
       id: SEED_RUN_IDS.failedText,
       userId,
       workspaceId,
-      createdAt: createdAt[8],
+      createdAt: createdAt[12],
       draft: {
         ...createDraft(textModel),
         prompt:

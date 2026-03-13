@@ -1,4 +1,5 @@
 import { loadUploadedAssetFile } from "./studio-browser-storage";
+import { createAudioThumbnailUrl } from "./studio-asset-thumbnails";
 import type {
   GenerationRun,
   LibraryItem,
@@ -45,11 +46,19 @@ export async function hydrateUploadedPreviewUrlsForItems(
 
       const previewUrl = URL.createObjectURL(blob);
       previewUrls.set(item.id, previewUrl);
+      const thumbnailUrl =
+        item.kind === "audio"
+          ? createAudioThumbnailUrl({
+              title: item.title,
+              subtitle: item.meta || "Uploaded audio",
+              accentSeed: item.id,
+            })
+          : previewUrl;
 
       return {
         ...item,
         previewUrl,
-        thumbnailUrl: previewUrl,
+        thumbnailUrl,
       };
     })
   );
@@ -78,7 +87,7 @@ export function buildStudioWorkspaceSnapshot(
   params: BuildStudioWorkspaceSnapshotParams
 ) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     mode: params.appMode,
     profile: params.profile,
     providerSettings: params.providerSettings,

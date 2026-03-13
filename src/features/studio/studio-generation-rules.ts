@@ -2,6 +2,7 @@ import type { StudioAppMode } from "./studio-app-mode";
 import type {
   GenerationRun,
   StudioDraft,
+  StudioModelDefinition,
   StudioQueueSettings,
 } from "./types";
 
@@ -16,6 +17,18 @@ export function quoteStudioDraftCredits(
   modelId: string,
   draft: CreditQuoteDraft
 ) {
+  if (modelId === "bria-background-remove") {
+    return 1;
+  }
+
+  if (
+    modelId === "minimax-speech-2.8-hd" ||
+    modelId === "orpheus-tts" ||
+    modelId === "dia-tts"
+  ) {
+    return 2;
+  }
+
   if (modelId === "veo-3.1") {
     const durationMultiplier = Math.max(1, Math.round(draft.durationSeconds / 4));
     const resolutionBase =
@@ -53,6 +66,10 @@ export function getStudioRunCompletionDelayMs(run: Pick<RunTimingShape, "kind">)
     return 3200;
   }
 
+  if (run.kind === "audio") {
+    return 1600;
+  }
+
   if (run.kind === "text") {
     return 1200;
   }
@@ -62,4 +79,22 @@ export function getStudioRunCompletionDelayMs(run: Pick<RunTimingShape, "kind">)
 
 export function shouldStudioMockRunFail(run: Pick<RunTimingShape, "prompt">) {
   return /\b(fail|error)\b/i.test(run.prompt);
+}
+
+export function canGenerateWithDraft(
+  model: Pick<StudioModelDefinition, "minimumReferenceFiles" | "requiresPrompt">,
+  draft: Pick<StudioDraft, "prompt" | "references">
+) {
+  const requiresPrompt = model.requiresPrompt ?? true;
+  const minimumReferenceFiles = model.minimumReferenceFiles ?? 0;
+
+  if (requiresPrompt && draft.prompt.trim().length === 0) {
+    return false;
+  }
+
+  if (draft.references.length < minimumReferenceFiles) {
+    return false;
+  }
+
+  return true;
 }

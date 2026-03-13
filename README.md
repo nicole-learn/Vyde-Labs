@@ -1,6 +1,6 @@
 # Vyde Labs
 
-Vyde Labs is a clean, Fal-powered AI studio for text, image, and video generation.
+Vyde Labs is a clean, Fal-powered AI studio for text, image, video, speech, and background-removal generation.
 
 It is designed to feel simple from the first minute:
 
@@ -18,6 +18,8 @@ Vyde Labs comes in two versions:
 
 - generate images
 - generate videos
+- generate speech
+- remove backgrounds from images
 - use LLMs in the same studio
 - upload references when a model supports them
 - keep outputs organized with folders
@@ -68,7 +70,7 @@ Best for:
 5. Review the result in your history.
 6. Save the output into folders so your workspace stays organized.
 
-The goal is to make text, image, and video creation feel consistent instead of fragmented.
+The goal is to make text, image, video, speech, and utility creation feel consistent instead of fragmented.
 
 ## Why Folders Matter
 
@@ -123,7 +125,7 @@ This keeps pricing transparent and easy to understand.
 
 ## Who Vyde Labs Is For
 
-- creators who want fast text, image, and video generation in one place
+- creators who want fast text, image, video, speech, and background-removal tools in one place
 - teams who want a clean AI workspace instead of a workflow builder
 - people who care about keeping outputs organized
 - users who want the option to go local or hosted without learning a different product

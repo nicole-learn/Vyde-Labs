@@ -3,13 +3,16 @@ import type { LibraryItem, LibraryItemKind } from "./types";
 export interface StudioAssetMediaMetadata {
   mediaWidth: number | null;
   mediaHeight: number | null;
+  mediaDurationSeconds: number | null;
   aspectRatioLabel: string | null;
+  hasAlpha: boolean;
 }
 
 const FALLBACK_ASPECT_RATIOS: Record<LibraryItemKind, number> = {
   image: 1,
   video: 16 / 9,
   text: 0.82,
+  audio: 1.55,
 };
 
 function greatestCommonDivisor(a: number, b: number): number {
@@ -67,11 +70,13 @@ export function createMediaMetadataFromAspectRatioLabel(
   kind: LibraryItemKind,
   aspectRatioLabel: string | null | undefined
 ): StudioAssetMediaMetadata {
-  if (kind === "text") {
+  if (kind === "text" || kind === "audio") {
     return {
       mediaWidth: null,
       mediaHeight: null,
+      mediaDurationSeconds: null,
       aspectRatioLabel: null,
+      hasAlpha: false,
     };
   }
 
@@ -80,14 +85,18 @@ export function createMediaMetadataFromAspectRatioLabel(
     return {
       mediaWidth: null,
       mediaHeight: null,
+      mediaDurationSeconds: null,
       aspectRatioLabel: aspectRatioLabel?.trim() || null,
+      hasAlpha: false,
     };
   }
 
   return {
     mediaWidth: parsedRatio.width * 100,
     mediaHeight: parsedRatio.height * 100,
+    mediaDurationSeconds: null,
     aspectRatioLabel: `${parsedRatio.width}:${parsedRatio.height}`,
+    hasAlpha: false,
   };
 }
 
@@ -184,17 +193,63 @@ async function readVideoDimensions(previewUrl: string) {
   });
 }
 
+async function readAudioDuration(previewUrl: string) {
+  return new Promise<number | null>((resolve) => {
+    const audio = document.createElement("audio");
+
+    const cleanup = () => {
+      audio.removeAttribute("src");
+      audio.load();
+    };
+
+    audio.preload = "metadata";
+
+    audio.onloadedmetadata = () => {
+      const durationSeconds = Number.isFinite(audio.duration) ? audio.duration : null;
+      cleanup();
+      resolve(durationSeconds);
+    };
+
+    audio.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    audio.src = previewUrl;
+  });
+}
+
 export async function readUploadedAssetMediaMetadata(params: {
-  kind: Extract<LibraryItemKind, "image" | "video">;
+  kind: Extract<LibraryItemKind, "image" | "video" | "audio">;
   previewUrl: string;
+  mimeType?: string | null;
+  hasAlpha?: boolean;
 }) {
+  if (params.kind === "audio") {
+    return {
+      mediaWidth: null,
+      mediaHeight: null,
+      mediaDurationSeconds: await readAudioDuration(params.previewUrl),
+      aspectRatioLabel: null,
+      hasAlpha: false,
+    } satisfies StudioAssetMediaMetadata;
+  }
+
   const dimensions =
     params.kind === "video"
       ? await readVideoDimensions(params.previewUrl)
       : await readImageDimensions(params.previewUrl);
+  const hasAlpha =
+    params.hasAlpha ??
+    Boolean(
+      params.mimeType &&
+        /image\/(png|webp|gif|svg\+xml)/i.test(params.mimeType.trim())
+    );
 
   return {
     ...dimensions,
+    mediaDurationSeconds: null,
     aspectRatioLabel: formatAspectRatioLabel(dimensions),
+    hasAlpha,
   } satisfies StudioAssetMediaMetadata;
 }

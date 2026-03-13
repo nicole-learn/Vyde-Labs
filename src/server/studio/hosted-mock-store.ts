@@ -3,10 +3,12 @@ import {
   createGeneratedLibraryItem,
   createGenerationRunPreviewUrl,
   createGenerationRunSummary,
+  createRunFile,
   createStudioId,
   createStudioSeedSnapshot,
   hydrateDraft,
 } from "@/features/studio/studio-local-runtime-data";
+import { createAudioThumbnailUrl } from "@/features/studio/studio-asset-thumbnails";
 import {
   getHostedStudioConcurrencyLimit,
   getStudioRunCompletionDelayMs,
@@ -161,26 +163,6 @@ function scheduleCompletion(store: HostedMockStore, runId: string) {
     const model = getStudioModelById(latestRun.modelId);
     const draft = hydrateDraft(latestRun.draftSnapshot, model);
     const nextRunFileId = latestRun.kind === "text" ? null : createStudioId("run-file");
-    const nextRunFile: StudioRunFile | null =
-      latestRun.kind === "text"
-        ? null
-        : {
-            id: nextRunFileId!,
-            runId: latestRun.id,
-            userId: latestRun.userId,
-            fileRole: "output",
-            sourceType: "generated",
-            storageBucket: "inline-preview",
-            storagePath: createGenerationRunPreviewUrl(model, draft),
-            mimeType: model.kind === "video" ? "video/mp4" : "image/png",
-            fileName: `${latestRun.id}.${model.kind === "video" ? "mp4" : "png"}`,
-            fileSizeBytes: null,
-            mediaWidth: null,
-            mediaHeight: null,
-            aspectRatioLabel: draft.aspectRatio,
-            metadata: {},
-            createdAt: finishedAt,
-          };
 
     const nextItem = createGeneratedLibraryItem({
       runFileId: nextRunFileId,
@@ -193,6 +175,24 @@ function scheduleCompletion(store: HostedMockStore, runId: string) {
       userId: latestRun.userId,
       workspaceId: latestRun.workspaceId,
     });
+    const nextRunFile: StudioRunFile | null =
+      nextRunFileId && nextItem.previewUrl
+        ? createRunFile({
+            id: nextRunFileId,
+            runId: latestRun.id,
+            userId: latestRun.userId,
+            sourceType: "generated",
+            fileRole: "output",
+            previewUrl: nextItem.previewUrl,
+            fileName: nextItem.fileName ?? `${latestRun.id}.bin`,
+            mimeType: nextItem.mimeType || "application/octet-stream",
+            mediaWidth: nextItem.mediaWidth,
+            mediaHeight: nextItem.mediaHeight,
+            mediaDurationSeconds: nextItem.mediaDurationSeconds,
+            hasAlpha: nextItem.hasAlpha,
+            createdAt: finishedAt,
+          })
+        : null;
 
     latestRun.status = "completed";
     latestRun.providerStatus = "completed";
@@ -402,7 +402,9 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         meta: "Text note",
         mediaWidth: null,
         mediaHeight: null,
+        mediaDurationSeconds: null,
         aspectRatioLabel: null,
+        hasAlpha: false,
         folderId: mutation.folderId,
         folderIds: mutation.folderId ? [mutation.folderId] : [],
         storageBucket: "inline-text",
@@ -451,12 +453,7 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         modelName: model.name,
         kind: model.kind,
         provider: "fal",
-        requestMode:
-          model.kind === "image"
-            ? "text-to-image"
-            : model.kind === "video"
-              ? "text-to-video"
-              : "chat",
+        requestMode: model.requestMode,
         status: "queued",
         prompt: persistedDraft.prompt,
         createdAt,
@@ -472,6 +469,7 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         errorMessage: null,
         inputPayload: {
           prompt: persistedDraft.prompt,
+          request_mode: model.requestMode,
         },
         inputSettings: persistedDraft,
         providerRequestId: null,
@@ -546,25 +544,39 @@ export async function uploadHostedMockFiles(params: {
       mimeType: file.type || "application/octet-stream",
     });
 
-    const runFile: StudioRunFile = {
-      id: runFileId,
-      runId: null,
-      userId: store.snapshot.profile.id,
+      const runFile: StudioRunFile = {
+        id: runFileId,
+        runId: null,
+        userId: store.snapshot.profile.id,
       fileRole: "input",
       sourceType: "uploaded",
       storageBucket: "mock-api",
       storagePath: runFileId,
-      mimeType: file.type || "application/octet-stream",
-      fileName: file.name,
-      fileSizeBytes: file.size,
-      mediaWidth: null,
-      mediaHeight: null,
-      aspectRatioLabel: null,
-      metadata: {},
-      createdAt,
-    };
+        mimeType: file.type || "application/octet-stream",
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        mediaWidth: null,
+        mediaHeight: null,
+        mediaDurationSeconds: null,
+        aspectRatioLabel: null,
+        hasAlpha: /image\/(png|webp|gif|svg\+xml)/i.test(file.type),
+        metadata: {},
+        createdAt,
+      };
 
-    const kind = file.type.startsWith("video/") ? "video" : "image";
+    const kind = file.type.startsWith("video/")
+      ? "video"
+      : file.type.startsWith("audio/")
+        ? "audio"
+        : "image";
+    const thumbnailUrl =
+      kind === "audio"
+        ? createAudioThumbnailUrl({
+            title: file.name,
+            subtitle: `${(file.size / 1024 / 1024).toFixed(1)} MB audio upload`,
+            accentSeed: file.name,
+          })
+        : previewUrl;
     const item: LibraryItem = {
       id: createStudioId("asset"),
       userId: store.snapshot.profile.id,
@@ -576,7 +588,7 @@ export async function uploadHostedMockFiles(params: {
       source: "uploaded",
       role: "uploaded_source",
       previewUrl,
-      thumbnailUrl: previewUrl,
+      thumbnailUrl,
       contentText: null,
       createdAt,
       updatedAt: createdAt,
@@ -585,15 +597,20 @@ export async function uploadHostedMockFiles(params: {
       provider: "fal",
       status: "ready",
       prompt: "",
-      meta: `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
+      meta:
+        kind === "audio"
+          ? `${file.type || "Audio"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`
+          : `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
       mediaWidth: null,
       mediaHeight: null,
+      mediaDurationSeconds: null,
       aspectRatioLabel: null,
+      hasAlpha: /image\/(png|webp|gif|svg\+xml)/i.test(file.type),
       folderId: params.folderId,
       folderIds: params.folderId ? [params.folderId] : [],
       storageBucket: "mock-api",
       storagePath: runFileId,
-      thumbnailPath: runFileId,
+      thumbnailPath: kind === "audio" ? null : runFileId,
       fileName: file.name,
       mimeType: file.type || null,
       byteSize: file.size,

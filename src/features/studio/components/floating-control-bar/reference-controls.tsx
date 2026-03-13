@@ -1,7 +1,7 @@
 "use client";
 
-import { FileText, Play, Plus, X } from "lucide-react";
-import { useMemo } from "react";
+import { AudioLines, FileText, Play, Plus, X } from "lucide-react";
+import { useEffect, useMemo } from "react";
 import { cn } from "@/lib/cn";
 import { STUDIO_MEDIA_UPLOAD_ACCEPT } from "../../studio-local-runtime-helpers";
 import { getDraftReferencePreviewMediaKind } from "../../studio-preview-utils";
@@ -201,6 +201,24 @@ export function ReferenceFileThumbnail({
             </span>
           </div>
         </div>
+      ) : reference.kind === "audio" ? (
+        <div className="relative size-full">
+          {previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl}
+              alt={reference.title}
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="size-full bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.04))]" />
+          )}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="rounded-full bg-black/45 p-1.5 backdrop-blur-sm">
+              <AudioLines className="size-4 text-white" />
+            </span>
+          </div>
+        </div>
       ) : previewUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -242,6 +260,21 @@ export function ReferencePreviewDialog({
   );
   const previewUrl =
     reference && previewKind !== "file" ? reference.previewUrl : null;
+  const audioUrl = useMemo(() => {
+    if (!reference || reference.kind !== "audio") {
+      return null;
+    }
+
+    return URL.createObjectURL(reference.file);
+  }, [reference]);
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
+  }, [audioUrl]);
 
   if (!reference) {
     return null;
@@ -266,7 +299,40 @@ export function ReferencePreviewDialog({
           <X className="size-4" />
         </button>
 
-        {previewKind === "video" && previewUrl ? (
+        {reference.kind === "audio" ? (
+          <div className="flex min-h-[18rem] w-full max-w-3xl flex-col gap-6 px-8 py-10 text-white">
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,#071722_0%,#0b2033_48%,#07131f_100%)] p-6">
+              {previewUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrl}
+                    alt={reference.title}
+                    className="absolute inset-0 size-full object-cover opacity-90"
+                  />
+                  <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.78)_0%,rgba(0,0,0,0.20)_58%,rgba(0,0,0,0.12)_100%)]" />
+                </>
+              ) : null}
+              <div className="relative z-10 flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
+                    Audio reference
+                  </div>
+                  <div className="text-xl font-semibold">{reference.title}</div>
+                </div>
+                <span className="rounded-full bg-black/40 p-3 backdrop-blur-sm">
+                  <AudioLines className="size-5 text-white" />
+                </span>
+              </div>
+            </div>
+            <audio
+              src={audioUrl ?? undefined}
+              controls
+              autoPlay
+              className="w-full"
+            />
+          </div>
+        ) : previewKind === "video" && previewUrl ? (
           <video
             src={previewUrl}
             controls
