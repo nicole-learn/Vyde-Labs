@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, FolderPlus, SquareMousePointer, Upload } from "lucide-react";
+import { FileText, FolderPlus, SquareMousePointer, Trash2, Upload } from "lucide-react";
 import type { ReactNode } from "react";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/cn";
@@ -13,7 +13,9 @@ interface StudioMobileRailProps {
   folderCounts: Record<string, number>;
   folders: StudioFolder[];
   hasFalKey: boolean;
+  onDeleteSelected: () => void;
   selectedFolderId: string | null;
+  selectedItemCount: number;
   selectionModeEnabled: boolean;
   sizeLevel: number;
   onCreateFolder: () => void;
@@ -59,7 +61,9 @@ export function StudioMobileRail({
   folderCounts,
   folders,
   hasFalKey,
+  onDeleteSelected,
   selectedFolderId,
+  selectedItemCount,
   selectionModeEnabled,
   sizeLevel,
   onCreateFolder,
@@ -126,6 +130,18 @@ export function StudioMobileRail({
             className="!min-h-20 h-20 cursor-grab [&_[data-slot=slider-range]]:bg-primary/80 [&_[data-slot=slider-thumb]]:size-[18px] [&_[data-slot=slider-thumb]]:border-0 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:hover:ring-0 [&_[data-slot=slider-thumb]]:shadow-[0_1px_8px_rgba(0,0,0,0.45)] [&_[data-slot=slider-track]]:bg-white/10"
           />
         </div>
+
+        {selectedItemCount > 0 ? (
+          <button
+            type="button"
+            onClick={onDeleteSelected}
+            aria-label="Delete selected"
+            title={`Delete ${selectedItemCount}`}
+            className="flex size-[46px] shrink-0 items-center justify-center rounded-md bg-red-500/16 text-red-200 transition-all duration-150 hover:bg-red-500/24 active:scale-[0.95]"
+          >
+            <Trash2 className="size-5" />
+          </button>
+        ) : null}
 
         <RailButton
           active={selectionModeEnabled}

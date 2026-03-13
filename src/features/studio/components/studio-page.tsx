@@ -55,6 +55,8 @@ export function StudioPage({
     y: number;
   } | null>(null);
   const hasDragPreview = dragPreview !== null;
+  const selectionModeEnabled = studio.selectionModeEnabled;
+  const toggleSelectionMode = studio.toggleSelectionMode;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(XL_BREAKPOINT_QUERY);
@@ -115,6 +117,23 @@ export function StudioPage({
     window.addEventListener("drop", handleUnhandledInternalDrop);
     return () => window.removeEventListener("drop", handleUnhandledInternalDrop);
   }, []);
+
+  useEffect(() => {
+    if (!selectionModeEnabled) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      toggleSelectionMode();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectionModeEnabled, toggleSelectionMode]);
 
   const activeItem = useMemo(
     () => studio.items.find((item) => item.id === activeItemId) ?? null,
@@ -290,7 +309,9 @@ export function StudioPage({
             folderCounts={studio.folderCounts}
             folders={studio.folders}
             hasFalKey={studio.hasFalKey}
+            onDeleteSelected={studio.deleteSelectedItems}
             selectedFolderId={studio.selectedFolderId}
+            selectedItemCount={studio.selectedItemCount}
             selectionModeEnabled={studio.selectionModeEnabled}
             sizeLevel={studio.gallerySizeLevel}
             onCreateFolder={studio.openCreateFolder}

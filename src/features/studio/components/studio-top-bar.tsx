@@ -66,9 +66,6 @@ export function StudioTopBar({
   sizeLevel,
   onSizeLevelChange,
 }: StudioTopBarProps) {
-  const selectionLabel =
-    selectedItemCount > 0 ? `Delete ${selectedItemCount}` : "Selection Mode";
-
   return (
     <header className="flex h-full items-center gap-3 border-b border-white/8 bg-black px-3">
       <div className="flex min-w-0 flex-1 items-center">
@@ -88,20 +85,25 @@ export function StudioTopBar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <ActionPillButton
-          active={selectedItemCount === 0 && selectionModeEnabled}
-          ariaLabel={selectedItemCount > 0 ? "Delete selected" : "Selection mode"}
-          className="min-w-[142px]"
-          onClick={selectedItemCount > 0 ? onDeleteSelected : onToggleSelectionMode}
-        >
-          {selectedItemCount > 0 ? (
+        {selectedItemCount > 0 ? (
+          <ActionPillButton
+            ariaLabel="Delete selected"
+            className="min-w-[112px] border-red-500/28 bg-red-500/14 text-red-100 hover:bg-red-500/22"
+            onClick={onDeleteSelected}
+          >
             <Trash2 className="size-3.5 text-red-300" />
-          ) : (
-            <SquareMousePointer className="size-3.5" />
-          )}
-          <span className={selectedItemCount > 0 ? "text-red-200" : undefined}>
-            {selectionLabel}
-          </span>
+            <span>{`Delete ${selectedItemCount}`}</span>
+          </ActionPillButton>
+        ) : null}
+
+        <ActionPillButton
+          active={selectionModeEnabled}
+          ariaLabel="Selection mode"
+          className="min-w-[142px]"
+          onClick={onToggleSelectionMode}
+        >
+          <SquareMousePointer className="size-3.5" />
+          <span>Selection Mode</span>
         </ActionPillButton>
 
         <ActionPillButton
