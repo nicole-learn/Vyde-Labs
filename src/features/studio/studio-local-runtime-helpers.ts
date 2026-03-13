@@ -4,6 +4,7 @@ import {
   createStudioId,
   LOCAL_STUDIO_WORKSPACE_ID,
 } from "./studio-local-runtime-data";
+import { readUploadedAssetMediaMetadata } from "./studio-asset-metadata";
 import type {
   DraftReference,
   LibraryItem,
@@ -322,7 +323,9 @@ export function createTextLibraryItem(params: {
     status: "ready",
     prompt: trimmedBody,
     meta: "Text note",
-    aspectRatio: 0.82,
+    mediaWidth: null,
+    mediaHeight: null,
+    aspectRatioLabel: null,
     folderId: params.folderId,
     storagePath: null,
     mimeType: "text/plain",
@@ -331,10 +334,10 @@ export function createTextLibraryItem(params: {
   };
 }
 
-export function createUploadedLibraryItem(
+export async function createUploadedLibraryItem(
   file: File,
   folderId: string | null
-): LibraryItem | null {
+): Promise<LibraryItem | null> {
   const fileType = file.type.toLowerCase();
   const kind = fileType.startsWith("image/")
     ? "image"
@@ -347,7 +350,10 @@ export function createUploadedLibraryItem(
   }
 
   const previewUrl = URL.createObjectURL(file);
-  const aspectRatio = kind === "video" ? 16 / 9 : 4 / 5;
+  const mediaMetadata = await readUploadedAssetMediaMetadata({
+    kind,
+    previewUrl,
+  });
   const timestamp = new Date().toISOString();
 
   return {
@@ -368,7 +374,9 @@ export function createUploadedLibraryItem(
     status: "ready",
     prompt: "",
     meta: `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
-    aspectRatio,
+    mediaWidth: mediaMetadata.mediaWidth,
+    mediaHeight: mediaMetadata.mediaHeight,
+    aspectRatioLabel: mediaMetadata.aspectRatioLabel,
     folderId,
     storagePath: null,
     mimeType: file.type || null,

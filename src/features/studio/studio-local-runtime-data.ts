@@ -2,6 +2,10 @@ import {
   STUDIO_MODEL_CATALOG,
   getStudioModelById,
 } from "./studio-model-catalog";
+import {
+  createMediaMetadataFromAspectRatioLabel,
+  formatAspectRatioLabel,
+} from "./studio-asset-metadata";
 import type {
   GenerationRun,
   LibraryItem,
@@ -12,6 +16,28 @@ import type {
 } from "./types";
 
 export const LOCAL_STUDIO_WORKSPACE_ID = "workspace-local";
+const MOCK_MEDIA = {
+  generatedImage: {
+    previewUrl: "/mock-media/nasa-neowise.jpg",
+    mediaWidth: 1600,
+    mediaHeight: 1200,
+  },
+  generatedVideo: {
+    previewUrl: "/mock-media/nasa-winston-clip.mp4",
+    mediaWidth: 960,
+    mediaHeight: 540,
+  },
+  uploadedImage: {
+    previewUrl: "/mock-media/jacmel-beach.jpg",
+    mediaWidth: 1146,
+    mediaHeight: 982,
+  },
+  uploadedVideo: {
+    previewUrl: "/mock-media/moon-passing-earth-clip.mp4",
+    mediaWidth: 960,
+    mediaHeight: 540,
+  },
+} as const;
 const SEED_BASE_TIMESTAMP = "2026-03-13T18:00:00.000Z";
 const SEED_FOLDER_IDS = {
   references: "folder-references",
@@ -118,13 +144,25 @@ function getPreviewBackgroundPairs(): Record<StudioModelKind, string> {
   };
 }
 
-function parseAspectRatioValue(value: string): number {
-  const [width, height] = value.split(":").map((part) => Number(part));
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return 1;
+function getMimeTypeFromPreviewUrl(params: {
+  kind: Exclude<StudioModelKind, "text">;
+  previewUrl: string | null | undefined;
+}) {
+  const previewUrl = params.previewUrl?.toLowerCase() ?? "";
+
+  if (params.kind === "video") {
+    if (previewUrl.endsWith(".webm")) return "video/webm";
+    return "video/mp4";
   }
 
-  return width / height;
+  if (previewUrl.endsWith(".jpg") || previewUrl.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (previewUrl.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  return "image/png";
 }
 
 export function createGeneratedLibraryItem(params: {
@@ -133,7 +171,10 @@ export function createGeneratedLibraryItem(params: {
   draft: StudioDraft;
   createdAt: string;
   folderId: string | null;
+  previewUrlOverride?: string | null;
   runId?: string | null;
+  mediaWidthOverride?: number | null;
+  mediaHeightOverride?: number | null;
 }): LibraryItem {
   const title = params.draft.prompt.trim().slice(0, 40) || params.model.name;
   const backgroundPairs = getPreviewBackgroundPairs();
@@ -163,7 +204,9 @@ export function createGeneratedLibraryItem(params: {
       status: "ready",
       prompt: params.draft.prompt,
       meta: `${params.model.name} • ${params.draft.maxTokens} max tokens • ${params.draft.tone}`,
-      aspectRatio: 0.82,
+      mediaWidth: null,
+      mediaHeight: null,
+      aspectRatioLabel: null,
       folderId: params.folderId,
       storagePath: null,
       mimeType: "text/plain",
@@ -179,6 +222,13 @@ export function createGeneratedLibraryItem(params: {
     kind: params.model.kind,
     background: backgroundPairs[params.model.kind],
   });
+  const mediaMetadata = createMediaMetadataFromAspectRatioLabel(
+    params.model.kind,
+    params.draft.aspectRatio
+  );
+  const mediaWidth = params.mediaWidthOverride ?? mediaMetadata.mediaWidth;
+  const mediaHeight = params.mediaHeightOverride ?? mediaMetadata.mediaHeight;
+  const resolvedPreviewUrl = params.previewUrlOverride ?? previewUrl;
 
   return {
     id: params.id ?? createStudioId("asset"),
@@ -187,8 +237,8 @@ export function createGeneratedLibraryItem(params: {
     kind: params.model.kind,
     source: "generated",
     role: "generated_output",
-    previewUrl,
-    thumbnailUrl: previewUrl,
+    previewUrl: resolvedPreviewUrl,
+    thumbnailUrl: resolvedPreviewUrl,
     contentText: null,
     createdAt: params.createdAt,
     updatedAt: params.createdAt,
@@ -201,10 +251,16 @@ export function createGeneratedLibraryItem(params: {
       params.model.kind === "image"
         ? `${params.model.name} • ${params.draft.aspectRatio} • ${params.draft.resolution}`
         : `${params.model.name} • ${params.draft.durationSeconds}s • ${params.draft.resolution}`,
-    aspectRatio: parseAspectRatioValue(params.draft.aspectRatio),
+    mediaWidth,
+    mediaHeight,
+    aspectRatioLabel:
+      formatAspectRatioLabel({ mediaWidth, mediaHeight }) ?? params.draft.aspectRatio,
     folderId: params.folderId,
     storagePath: null,
-    mimeType: params.model.kind === "video" ? "video/mp4" : "image/png",
+    mimeType: getMimeTypeFromPreviewUrl({
+      kind: params.model.kind,
+      previewUrl: resolvedPreviewUrl,
+    }),
     byteSize: null,
     errorMessage: null,
   };
@@ -278,11 +334,15 @@ function createMockUploadedSeedItem(params: {
   kind: "image" | "video" | "text";
   createdAt: string;
   folderId: string | null;
+  previewUrlOverride?: string | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
 }): LibraryItem {
   const previewUrl =
     params.kind === "text"
       ? null
-      : createPreviewSvg({
+      : params.previewUrlOverride ??
+        createPreviewSvg({
           title: params.title,
           subtitle: params.prompt,
           kind: params.kind,
@@ -290,6 +350,20 @@ function createMockUploadedSeedItem(params: {
             params.kind === "video"
               ? "#1d4ed8|#0f172a"
               : "#38bdf8|#082f49",
+        });
+  const aspectRatioLabel =
+    params.kind === "text"
+      ? null
+      : formatAspectRatioLabel({
+          mediaWidth: params.mediaWidth,
+          mediaHeight: params.mediaHeight,
+        });
+  const mimeType =
+    params.kind === "text"
+      ? "text/plain"
+      : getMimeTypeFromPreviewUrl({
+          kind: params.kind,
+          previewUrl,
         });
 
   return {
@@ -315,16 +389,12 @@ function createMockUploadedSeedItem(params: {
         : params.kind === "video"
           ? "Uploaded video • Mock source"
           : "Uploaded image • Mock source",
-    aspectRatio:
-      params.kind === "video" ? 16 / 9 : params.kind === "image" ? 4 / 5 : 0.82,
+    mediaWidth: params.kind === "text" ? null : (params.mediaWidth ?? null),
+    mediaHeight: params.kind === "text" ? null : (params.mediaHeight ?? null),
+    aspectRatioLabel,
     folderId: params.folderId,
     storagePath: null,
-    mimeType:
-      params.kind === "text"
-        ? "text/plain"
-        : params.kind === "video"
-          ? "video/mp4"
-          : "image/png",
+    mimeType,
     byteSize: params.prompt.length * 32,
     errorMessage: null,
   };
@@ -337,7 +407,6 @@ function createMockGenerationRun(params: {
   errorMessage?: string | null;
   folderId: string | null;
   model: StudioModelDefinition;
-  progressPercent?: number | null;
   status: GenerationRun["status"];
 }) {
   return {
@@ -365,7 +434,7 @@ function createMockGenerationRun(params: {
     summary: createGenerationRunSummary(params.model, params.draft),
     outputAssetId: null,
     previewUrl: createGenerationRunPreviewUrl(params.model, params.draft),
-    progressPercent: params.progressPercent ?? null,
+    progressPercent: null,
     errorMessage: params.errorMessage ?? null,
     draftSnapshot: createDraftSnapshot(params.draft),
   } satisfies GenerationRun;
@@ -421,6 +490,9 @@ export function createStudioSeedState(): {
       draft: imageDraft,
       createdAt: createdAt[0],
       folderId: folders[0].id,
+      previewUrlOverride: MOCK_MEDIA.generatedImage.previewUrl,
+      mediaWidthOverride: MOCK_MEDIA.generatedImage.mediaWidth,
+      mediaHeightOverride: MOCK_MEDIA.generatedImage.mediaHeight,
       runId: SEED_RUN_IDS.completedImage,
     }),
     createGeneratedLibraryItem({
@@ -429,6 +501,9 @@ export function createStudioSeedState(): {
       draft: videoDraft,
       createdAt: createdAt[1],
       folderId: folders[1].id,
+      previewUrlOverride: MOCK_MEDIA.generatedVideo.previewUrl,
+      mediaWidthOverride: MOCK_MEDIA.generatedVideo.mediaWidth,
+      mediaHeightOverride: MOCK_MEDIA.generatedVideo.mediaHeight,
       runId: SEED_RUN_IDS.completedVideo,
     }),
     createGeneratedLibraryItem({
@@ -446,6 +521,9 @@ export function createStudioSeedState(): {
       kind: "image",
       createdAt: createdAt[3],
       folderId: folders[0].id,
+      previewUrlOverride: MOCK_MEDIA.uploadedImage.previewUrl,
+      mediaWidth: MOCK_MEDIA.uploadedImage.mediaWidth,
+      mediaHeight: MOCK_MEDIA.uploadedImage.mediaHeight,
     }),
     createMockUploadedSeedItem({
       id: SEED_ASSET_IDS.uploadedVideo,
@@ -454,6 +532,9 @@ export function createStudioSeedState(): {
       kind: "video",
       createdAt: createdAt[4],
       folderId: null,
+      previewUrlOverride: MOCK_MEDIA.uploadedVideo.previewUrl,
+      mediaWidth: MOCK_MEDIA.uploadedVideo.mediaWidth,
+      mediaHeight: MOCK_MEDIA.uploadedVideo.mediaHeight,
     }),
     createMockUploadedSeedItem({
       id: SEED_ASSET_IDS.uploadedText,
@@ -539,7 +620,6 @@ export function createStudioSeedState(): {
       },
       folderId: null,
       model: imageModel,
-      progressPercent: 8,
       status: "queued",
     }),
     createMockGenerationRun({
@@ -551,7 +631,6 @@ export function createStudioSeedState(): {
       },
       folderId: null,
       model: videoModel,
-      progressPercent: 62,
       status: "processing",
     }),
     createMockGenerationRun({

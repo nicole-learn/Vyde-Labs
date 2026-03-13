@@ -737,10 +737,13 @@ export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
 
       setUploadAssetsLoading(true);
       try {
-        const nextItems = files
-          .map((file) =>
-            createUploadedLibraryItem(file, folderIdOverride ?? selectedFolderId)
+        const nextItems = (
+          await Promise.all(
+            files.map((file) =>
+              createUploadedLibraryItem(file, folderIdOverride ?? selectedFolderId)
+            )
           )
+        )
           .filter((item): item is LibraryItem => Boolean(item));
 
         if (nextItems.length === 0) {

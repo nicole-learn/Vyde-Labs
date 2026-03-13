@@ -105,7 +105,9 @@ export interface LibraryItem {
   status: StudioAssetStatus;
   prompt: string;
   meta: string;
-  aspectRatio: number;
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  aspectRatioLabel: string | null;
   folderId: string | null;
   storagePath: string | null;
   mimeType: string | null;

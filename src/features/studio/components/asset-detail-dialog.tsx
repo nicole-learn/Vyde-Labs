@@ -103,6 +103,20 @@ function buildInfoRows(item: LibraryItem): AssetInfoRow[] {
     });
   }
 
+  if (item.mediaWidth && item.mediaHeight) {
+    rows.push({
+      label: "Dimensions",
+      value: `${item.mediaWidth} x ${item.mediaHeight}`,
+    });
+  }
+
+  if (item.aspectRatioLabel) {
+    rows.push({
+      label: "Aspect Ratio",
+      value: item.aspectRatioLabel,
+    });
+  }
+
   const byteSizeLabel = formatByteSize(item.byteSize);
   if (byteSizeLabel) {
     rows.push({

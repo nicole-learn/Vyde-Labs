@@ -21,6 +21,10 @@ import {
   setDraggedLibraryItems,
 } from "../studio-drag-data";
 import {
+  getDisplayAspectRatioFromMediaMetadata,
+  getLibraryItemDisplayAspectRatio,
+} from "../studio-asset-metadata";
+import {
   getLibraryItemPreviewMediaKind,
 } from "../studio-preview-utils";
 import type { GenerationRun, LibraryItem } from "../types";
@@ -571,7 +575,7 @@ export function StudioGallery({
         type: "asset",
         item,
         key: item.id,
-        aspectRatio: item.aspectRatio,
+        aspectRatio: getLibraryItemDisplayAspectRatio(item),
       })
     );
     const runDisplayItems = runCards.map(
@@ -579,7 +583,13 @@ export function StudioGallery({
         type: "run",
         run,
         key: run.id,
-        aspectRatio: run.kind === "video" ? 16 / 9 : run.kind === "text" ? 0.82 : 4 / 5,
+        aspectRatio:
+          run.kind === "text"
+            ? 0.82
+            : getDisplayAspectRatioFromMediaMetadata({
+                kind: run.kind,
+                aspectRatioLabel: run.draftSnapshot.aspectRatio,
+              }),
       })
     );
 
