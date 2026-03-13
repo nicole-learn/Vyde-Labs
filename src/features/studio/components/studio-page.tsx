@@ -174,16 +174,16 @@ export function StudioPage({
   };
 
   const downloadItem = (item: LibraryItem) => {
-    downloadLibraryItem(item);
+    void downloadLibraryItem(item);
   };
 
   const downloadFolder = (folderId: string) => {
     const folderItems = studio.getItemsForFolder(folderId);
-    downloadFolderItems(folderItems);
+    void downloadFolderItems(folderItems);
   };
 
   const downloadSelectedItems = () => {
-    downloadFolderItems(selectedItems);
+    void downloadFolderItems(selectedItems);
   };
 
   const copyFolderId = async (folderId: string) => {

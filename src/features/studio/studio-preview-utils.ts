@@ -22,6 +22,7 @@ export function getPreviewMediaKind(params: {
   kind?: "image" | "video" | "text" | "audio" | "document";
   mimeType?: string | null;
   previewUrl?: string | null;
+  preferImagePreview?: boolean;
 }): StudioPreviewMediaKind {
   const previewUrl = params.previewUrl ?? null;
   const mimeType = params.mimeType?.trim().toLowerCase() ?? null;
@@ -48,10 +49,18 @@ export function getPreviewMediaKind(params: {
   }
 
   if (mimeType?.startsWith("video/")) {
-    return params.kind === "video" ? "image" : "video";
+    return params.preferImagePreview ? "image" : "video";
   }
 
-  if (params.kind === "image" || params.kind === "video") {
+  if (params.preferImagePreview && params.kind === "video") {
+    return "image";
+  }
+
+  if (params.kind === "video") {
+    return "video";
+  }
+
+  if (params.kind === "image") {
     return "image";
   }
 
@@ -59,10 +68,14 @@ export function getPreviewMediaKind(params: {
 }
 
 export function getLibraryItemPreviewMediaKind(item: LibraryItem) {
+  const previewUrl = item.thumbnailUrl ?? item.previewUrl;
   return getPreviewMediaKind({
     kind: item.kind,
     mimeType: item.mimeType,
-    previewUrl: item.thumbnailUrl ?? item.previewUrl,
+    previewUrl,
+    preferImagePreview: Boolean(
+      item.thumbnailUrl && item.previewUrl && item.thumbnailUrl !== item.previewUrl
+    ),
   });
 }
 

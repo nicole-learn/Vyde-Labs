@@ -13,6 +13,18 @@ type HostedQueueShape = Pick<
   "activeHostedUserCount" | "providerSlotLimit"
 >;
 
+const HOSTED_QUEUE_ROTATION_SLICE_MS = 1400;
+
+function hashUserIdToPosition(userId: string, modulo: number) {
+  let hash = 0;
+
+  for (let index = 0; index < userId.length; index += 1) {
+    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
+  }
+
+  return modulo <= 1 ? 0 : hash % modulo;
+}
+
 export function quoteStudioDraftCredits(
   modelId: string,
   draft: CreditQuoteDraft
@@ -48,6 +60,33 @@ export function quoteStudioDraftCredits(
 export function getHostedStudioConcurrencyLimit(queueSettings: HostedQueueShape) {
   const activeUsers = Math.max(queueSettings.activeHostedUserCount, 1);
   return Math.max(1, Math.floor(queueSettings.providerSlotLimit / activeUsers));
+}
+
+export function getHostedStudioFairShare(params: {
+  queueSettings: HostedQueueShape;
+  userId: string;
+  now?: number;
+}) {
+  const activeUsers = Math.max(params.queueSettings.activeHostedUserCount, 1);
+  const providerSlotLimit = Math.max(params.queueSettings.providerSlotLimit, 1);
+  const now = params.now ?? Date.now();
+  const sliceNumber = Math.floor(now / HOSTED_QUEUE_ROTATION_SLICE_MS);
+  const userPosition = hashUserIdToPosition(params.userId, activeUsers);
+  const guaranteedSlots = Math.floor(providerSlotLimit / activeUsers);
+  const rotatingSlots = providerSlotLimit % activeUsers;
+  const rotationStart = sliceNumber % activeUsers;
+  const distanceFromRotationStart =
+    (userPosition - rotationStart + activeUsers) % activeUsers;
+  const receivesRotatingSlot =
+    rotatingSlots > 0 && distanceFromRotationStart < rotatingSlots;
+  const maxProcessing = guaranteedSlots + (receivesRotatingSlot ? 1 : 0);
+
+  return {
+    maxProcessing,
+    nextRetryDelayMs:
+      HOSTED_QUEUE_ROTATION_SLICE_MS - (now % HOSTED_QUEUE_ROTATION_SLICE_MS) + 40,
+    rotationSliceMs: HOSTED_QUEUE_ROTATION_SLICE_MS,
+  };
 }
 
 export function getStudioConcurrencyLimitForMode(

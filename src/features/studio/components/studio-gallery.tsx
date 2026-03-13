@@ -34,6 +34,7 @@ import {
   getLibraryItemPreviewMediaKind,
 } from "../studio-preview-utils";
 import type { GenerationRun, LibraryItem } from "../types";
+import { useDragHoverReset } from "../use-drag-hover-reset";
 
 interface StudioGalleryProps {
   allowDropMove?: boolean;
@@ -653,6 +654,12 @@ export function StudioGallery({
 }: StudioGalleryProps) {
   const { containerRef, width } = useMeasuredWidth();
   const [dropActive, setDropActive] = useState(false);
+
+  useDragHoverReset({
+    active: dropActive,
+    containerRef,
+    onReset: () => setDropActive(false),
+  });
 
   const galleryItems = useMemo(() => {
     const outputItems = items.map(

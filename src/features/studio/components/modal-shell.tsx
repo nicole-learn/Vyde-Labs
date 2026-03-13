@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/cn";
 
 interface ModalShellProps {
@@ -24,18 +30,65 @@ export function ModalShell({
   hideHeader = false,
   children,
 }: ModalShellProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
   useEffect(() => {
     if (!open) return;
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
+    previouslyFocusedElementRef.current =
+      typeof document !== "undefined"
+        ? (document.activeElement as HTMLElement | null)
+        : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panelRef.current?.focus();
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previouslyFocusedElementRef.current?.focus?.();
+    };
   }, [onClose, open]);
+
+  const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const focusableElements = panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusableElements || focusableElements.length === 0) {
+      event.preventDefault();
+      panelRef.current?.focus();
+      return;
+    }
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement as HTMLElement | null;
+
+    if (event.shiftKey) {
+      if (!activeElement || activeElement === first || activeElement === panelRef.current) {
+        event.preventDefault();
+        last.focus();
+      }
+      return;
+    }
+
+    if (activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   if (!open) return null;
 
@@ -47,6 +100,13 @@ export function ModalShell({
       }}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={hideHeader ? undefined : titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        onKeyDown={handlePanelKeyDown}
         className={cn(
           "w-full max-w-xl rounded-[28px] border border-white/10 bg-background/90 shadow-2xl shadow-black/50 backdrop-blur-2xl",
           panelClassName
@@ -54,9 +114,13 @@ export function ModalShell({
       >
         {!hideHeader ? (
           <div className="border-b border-white/8 px-6 py-5">
-            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            <h2 id={titleId} className="text-xl font-semibold text-white">
+              {title}
+            </h2>
             {description ? (
-              <p className="mt-2 text-sm leading-6 text-white/62">{description}</p>
+              <p id={descriptionId} className="mt-2 text-sm leading-6 text-white/62">
+                {description}
+              </p>
             ) : null}
           </div>
         ) : null}

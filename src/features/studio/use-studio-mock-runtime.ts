@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StudioAppMode } from "./studio-app-mode";
+import { readUploadedAssetMediaMetadata } from "./studio-asset-metadata";
 import {
   deleteUploadedAssetFile,
   loadStoredProviderSettings,
@@ -63,7 +64,9 @@ import {
 import type {
   HostedStudioMutation,
   HostedStudioSnapshotResponse,
+  HostedStudioUploadManifestEntry,
 } from "./studio-hosted-mock-api";
+import { getStudioUploadedMediaKind, studioUploadSupportsAlpha } from "./studio-upload-files";
 import type {
   DraftReference,
   GenerationRun,
@@ -95,10 +98,15 @@ function createEmptyDraftReferenceMap() {
   ) as Record<string, DraftReference[]>;
 }
 
-async function fetchHostedSnapshot() {
+async function fetchHostedSnapshot(signal?: AbortSignal) {
   const response = await fetch("/api/mock/studio/hosted", {
     method: "GET",
     cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "x-vydelabs-mock-client": "hosted",
+    },
+    signal,
   });
   const payload = (await response.json()) as HostedStudioSnapshotResponse & {
     error?: string;
@@ -111,13 +119,20 @@ async function fetchHostedSnapshot() {
   return payload.snapshot;
 }
 
-async function mutateHostedSnapshot(mutation: HostedStudioMutation) {
+async function mutateHostedSnapshot(
+  mutation: HostedStudioMutation,
+  signal?: AbortSignal
+) {
   const response = await fetch("/api/mock/studio/hosted", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-vydelabs-mock-client": "hosted",
     },
     body: JSON.stringify(mutation),
+    cache: "no-store",
+    credentials: "same-origin",
+    signal,
   });
   const payload = (await response.json()) as HostedStudioSnapshotResponse & {
     error?: string;
@@ -130,11 +145,57 @@ async function mutateHostedSnapshot(mutation: HostedStudioMutation) {
   return payload.snapshot;
 }
 
-async function uploadHostedFiles(files: File[], folderId: string | null) {
+async function uploadHostedFiles(
+  files: File[],
+  folderId: string | null,
+  signal?: AbortSignal
+) {
+  const manifest = (
+    await Promise.all(
+      files.map(async (file) => {
+        const kind = getStudioUploadedMediaKind({
+          fileName: file.name,
+          mimeType: file.type,
+        });
+
+        if (!kind) {
+          return null;
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        try {
+          const metadata = await readUploadedAssetMediaMetadata({
+            kind,
+            previewUrl,
+            mimeType: file.type,
+            hasAlpha: studioUploadSupportsAlpha(file.type),
+          });
+
+          return {
+            kind,
+            mediaWidth: metadata.mediaWidth,
+            mediaHeight: metadata.mediaHeight,
+            mediaDurationSeconds: metadata.mediaDurationSeconds,
+            aspectRatioLabel: metadata.aspectRatioLabel,
+            hasAlpha: metadata.hasAlpha,
+          } satisfies HostedStudioUploadManifestEntry;
+        } finally {
+          URL.revokeObjectURL(previewUrl);
+        }
+      })
+    )
+  ).filter(
+    (entry): entry is HostedStudioUploadManifestEntry => Boolean(entry)
+  );
+  if (manifest.length !== files.length) {
+    throw new Error("Only image, video, and audio uploads are supported.");
+  }
+
   const formData = new FormData();
   if (folderId) {
     formData.set("folderId", folderId);
   }
+  formData.set("manifest", JSON.stringify(manifest));
   for (const file of files) {
     formData.append("files", file);
   }
@@ -142,6 +203,12 @@ async function uploadHostedFiles(files: File[], folderId: string | null) {
   const response = await fetch("/api/mock/studio/hosted/uploads", {
     method: "POST",
     body: formData,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "x-vydelabs-mock-client": "hosted",
+    },
+    signal,
   });
   const payload = (await response.json()) as HostedStudioSnapshotResponse & {
     error?: string;
@@ -154,6 +221,29 @@ async function uploadHostedFiles(files: File[], folderId: string | null) {
   return payload.snapshot;
 }
 
+async function validateFalApiKey(falApiKey: string) {
+  const response = await fetch("/api/providers/fal/validate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ falApiKey }),
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const payload = (await response.json()) as {
+    error?: string;
+    ok?: boolean;
+    validatedAt?: string;
+  };
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error ?? "Could not validate your Fal API key.");
+  }
+
+  return payload.validatedAt ?? new Date().toISOString();
+}
+
 export function useStudioMockRuntime(appMode: StudioAppMode) {
   const seedSnapshot = useMemo(() => createStudioSeedSnapshot(appMode), [appMode]);
   const previewUrlsRef = useRef(new Map<string, string>());
@@ -162,6 +252,10 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   const completionTimersRef = useRef(new Map<string, number>());
   const draftReferencesRef = useRef(createEmptyDraftReferenceMap());
   const runsRef = useRef(seedSnapshot.generationRuns);
+  const hostedModeSessionRef = useRef(0);
+  const hostedLatestStartedRequestRef = useRef(0);
+  const hostedLatestAppliedRequestRef = useRef(0);
+  const hostedRequestControllersRef = useRef(new Set<AbortController>());
 
   const [models] = useState(STUDIO_VISIBLE_MODEL_CATALOG);
   const [profile, setProfile] = useState(seedSnapshot.profile);
@@ -239,10 +333,27 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     runsRef.current = runs;
   }, [runs]);
 
-  const visibleSelectedModelId =
-    models.find((model) => model.id === selectedModelId)?.id ??
-    models[0]?.id ??
-    selectedModelId;
+  const getVisibleModelId = useCallback(
+    (modelId: string) => {
+      if (models.some((model) => model.id === modelId)) {
+        return modelId;
+      }
+
+      const modelDefinition = getStudioModelById(modelId);
+      return (
+        models.find(
+          (model) =>
+            model.section === modelDefinition.section &&
+            model.kind === modelDefinition.kind
+        )?.id ??
+        models[0]?.id ??
+        modelId
+      );
+    },
+    [models]
+  );
+
+  const visibleSelectedModelId = getVisibleModelId(selectedModelId);
 
   useEffect(() => {
     draftReferencesRef.current = draftReferencesByModelId;
@@ -258,6 +369,51 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     dispatchTimersRef.current.clear();
     completionTimersRef.current.clear();
   }, []);
+
+  const abortHostedRequests = useCallback(() => {
+    for (const controller of hostedRequestControllersRef.current) {
+      controller.abort();
+    }
+    hostedRequestControllersRef.current.clear();
+  }, []);
+
+  const beginHostedRequest = useCallback(() => {
+    const controller = new AbortController();
+    const sessionId = hostedModeSessionRef.current;
+    const requestId = hostedLatestStartedRequestRef.current + 1;
+    hostedLatestStartedRequestRef.current = requestId;
+    hostedRequestControllersRef.current.add(controller);
+
+    return {
+      controller,
+      requestId,
+      sessionId,
+    };
+  }, []);
+
+  const finishHostedRequest = useCallback((controller: AbortController) => {
+    hostedRequestControllersRef.current.delete(controller);
+  }, []);
+
+  const applyHostedResponse = useCallback(
+    (
+      nextSnapshot: StudioWorkspaceSnapshot,
+      params: { preserveDrafts?: boolean; requestId: number; sessionId: number }
+    ) => {
+      if (hostedModeSessionRef.current !== params.sessionId) {
+        return false;
+      }
+
+      if (params.requestId < hostedLatestAppliedRequestRef.current) {
+        return false;
+      }
+
+      hostedLatestAppliedRequestRef.current = params.requestId;
+      applySnapshot(nextSnapshot, { preserveDrafts: params.preserveDrafts });
+      return true;
+    },
+    [applySnapshot]
+  );
 
   const cleanupPreviewUrls = useCallback(() => {
     for (const previewUrl of previewUrlsRef.current.values()) {
@@ -276,16 +432,21 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
   useEffect(() => {
     return () => {
+      abortHostedRequests();
       clearAllTimers();
       cleanupPreviewUrls();
       cleanupDraftReferences();
     };
-  }, [cleanupDraftReferences, cleanupPreviewUrls, clearAllTimers]);
+  }, [abortHostedRequests, cleanupDraftReferences, cleanupPreviewUrls, clearAllTimers]);
 
   useEffect(() => {
     let cancelled = false;
 
     storageHydratedRef.current = false;
+    hostedModeSessionRef.current += 1;
+    hostedLatestStartedRequestRef.current = 0;
+    hostedLatestAppliedRequestRef.current = 0;
+    abortHostedRequests();
     clearAllTimers();
     cleanupPreviewUrls();
     cleanupDraftReferences();
@@ -313,16 +474,25 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     resetUiState();
 
     if (appMode === "hosted") {
-      void fetchHostedSnapshot()
+      const request = beginHostedRequest();
+
+      void fetchHostedSnapshot(request.controller.signal)
         .then((nextSnapshot) => {
+          finishHostedRequest(request.controller);
+
           if (cancelled) {
             return;
           }
 
-          applySnapshot(nextSnapshot);
+          applyHostedResponse(nextSnapshot, {
+            requestId: request.requestId,
+            sessionId: request.sessionId,
+          });
           storageHydratedRef.current = true;
         })
         .catch(() => {
+          finishHostedRequest(request.controller);
+
           if (cancelled) {
             return;
           }
@@ -378,6 +548,10 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     cleanupPreviewUrls,
     clearAllTimers,
     seedSnapshot,
+    abortHostedRequests,
+    applyHostedResponse,
+    beginHostedRequest,
+    finishHostedRequest,
   ]);
 
   useEffect(() => {
@@ -434,17 +608,28 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
     }
 
     const intervalId = window.setInterval(() => {
-      void fetchHostedSnapshot()
+      const request = beginHostedRequest();
+
+      void fetchHostedSnapshot(request.controller.signal)
         .then((nextSnapshot) => {
-          applySnapshot(nextSnapshot, { preserveDrafts: true });
+          finishHostedRequest(request.controller);
+          applyHostedResponse(nextSnapshot, {
+            preserveDrafts: true,
+            requestId: request.requestId,
+            sessionId: request.sessionId,
+          });
         })
-        .catch(() => {
+        .catch((error) => {
+          finishHostedRequest(request.controller);
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
           // Keep the last known hosted mock state if polling fails.
         });
     }, 1200);
 
     return () => window.clearInterval(intervalId);
-  }, [appMode, applySnapshot]);
+  }, [appMode, applyHostedResponse, beginHostedRequest, finishHostedRequest]);
 
   const scheduleDispatchAttempt = useCallback(
     (runId: string, delayMs: number) => {
@@ -764,20 +949,47 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
 
   const applyHostedMutation = useCallback(
     async (mutation: HostedStudioMutation) => {
-      const nextSnapshot = await mutateHostedSnapshot(mutation);
-      applySnapshot(nextSnapshot, { preserveDrafts: true });
-      return nextSnapshot;
+      const request = beginHostedRequest();
+
+      try {
+        const nextSnapshot = await mutateHostedSnapshot(
+          mutation,
+          request.controller.signal
+        );
+        applyHostedResponse(nextSnapshot, {
+          preserveDrafts: true,
+          requestId: request.requestId,
+          sessionId: request.sessionId,
+        });
+        return nextSnapshot;
+      } finally {
+        finishHostedRequest(request.controller);
+      }
     },
-    [applySnapshot]
+    [applyHostedResponse, beginHostedRequest, finishHostedRequest]
   );
 
   const applyHostedUpload = useCallback(
     async (files: File[], folderId: string | null) => {
-      const nextSnapshot = await uploadHostedFiles(files, folderId);
-      applySnapshot(nextSnapshot, { preserveDrafts: true });
-      return nextSnapshot;
+      const request = beginHostedRequest();
+
+      try {
+        const nextSnapshot = await uploadHostedFiles(
+          files,
+          folderId,
+          request.controller.signal
+        );
+        applyHostedResponse(nextSnapshot, {
+          preserveDrafts: true,
+          requestId: request.requestId,
+          sessionId: request.sessionId,
+        });
+        return nextSnapshot;
+      } finally {
+        finishHostedRequest(request.controller);
+      }
     },
-    [applySnapshot]
+    [applyHostedResponse, beginHostedRequest, finishHostedRequest]
   );
 
   const hostedAccount = useMemo(() => {
@@ -1325,16 +1537,30 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         action: "reorder_folders",
         orderedFolderIds,
       }).catch(() => {
-        void fetchHostedSnapshot()
+        const request = beginHostedRequest();
+
+        void fetchHostedSnapshot(request.controller.signal)
           .then((nextSnapshot) => {
-            applySnapshot(nextSnapshot, { preserveDrafts: true });
+            finishHostedRequest(request.controller);
+            applyHostedResponse(nextSnapshot, {
+              preserveDrafts: true,
+              requestId: request.requestId,
+              sessionId: request.sessionId,
+            });
           })
           .catch(() => {
+            finishHostedRequest(request.controller);
             // Keep the optimistic folder order if the hosted mock refresh fails.
           });
       });
     },
-    [appMode, applyHostedMutation, applySnapshot]
+    [
+      appMode,
+      applyHostedMutation,
+      applyHostedResponse,
+      beginHostedRequest,
+      finishHostedRequest,
+    ]
   );
 
   const reuseRun = useCallback(
@@ -1343,23 +1569,37 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       if (!run) return;
 
       const nextModel = getStudioModelById(run.modelId);
-      setSelectedModelIdState(nextModel.id);
+      const nextVisibleModelId = getVisibleModelId(nextModel.id);
+      const nextVisibleModel = getStudioModelById(nextVisibleModelId);
+      const { referenceCount, ...persistedRunDraft } = run.draftSnapshot;
+      void referenceCount;
+      const nextDraft = {
+        ...(buildStudioDraftMap()[nextVisibleModel.id] ??
+          toPersistedDraft(createDraft(nextVisibleModel))),
+        ...persistedRunDraft,
+      };
+
+      if (nextVisibleModel.id !== nextModel.id) {
+        nextDraft.outputFormat = nextVisibleModel.defaultDraft.outputFormat;
+        nextDraft.voice = nextVisibleModel.defaultDraft.voice;
+        nextDraft.language = nextVisibleModel.defaultDraft.language;
+        nextDraft.speakingRate = nextVisibleModel.defaultDraft.speakingRate;
+      }
+
+      setSelectedModelIdState(nextVisibleModel.id);
       setDraftsByModelId((current) => ({
         ...current,
-        [nextModel.id]: {
-          ...current[nextModel.id],
-          ...run.draftSnapshot,
-        },
+        [nextVisibleModel.id]: nextDraft,
       }));
       setDraftReferencesByModelId((current) => {
-        releaseRemovedDraftReferencePreviews(current[nextModel.id] ?? [], []);
+        releaseRemovedDraftReferencePreviews(current[nextVisibleModel.id] ?? [], []);
         return {
           ...current,
-          [nextModel.id]: [],
+          [nextVisibleModel.id]: [],
         };
       });
     },
-    [runs]
+    [getVisibleModelId, runs]
   );
 
   const reuseItem = useCallback(
@@ -1374,23 +1614,25 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
       }
 
       const nextModel = getStudioModelById(item.modelId);
-      setSelectedModelIdState(nextModel.id);
+      const nextVisibleModelId = getVisibleModelId(nextModel.id);
+      setSelectedModelIdState(nextVisibleModelId);
       setDraftsByModelId((current) => ({
         ...current,
-        [nextModel.id]: {
-          ...(current[nextModel.id] ?? toPersistedDraft(createDraft(nextModel))),
+        [nextVisibleModelId]: {
+          ...(current[nextVisibleModelId] ??
+            toPersistedDraft(createDraft(getStudioModelById(nextVisibleModelId)))),
           prompt: item.prompt,
         },
       }));
       setDraftReferencesByModelId((current) => {
-        releaseRemovedDraftReferencePreviews(current[nextModel.id] ?? [], []);
+        releaseRemovedDraftReferencePreviews(current[nextVisibleModelId] ?? [], []);
         return {
           ...current,
-          [nextModel.id]: [],
+          [nextVisibleModelId]: [],
         };
       });
     },
-    [items, reuseRun, runs]
+    [getVisibleModelId, items, reuseRun, runs]
   );
 
   const updateTextItem = useCallback(
@@ -1637,15 +1879,31 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
         };
       }
 
-      const validatedAt = new Date().toISOString();
+      let validatedAt = nextSettings.lastValidatedAt;
+
+      try {
+        validatedAt = await validateFalApiKey(falApiKey);
+      } catch (error) {
+        setProviderConnectionStatus("invalid");
+        return {
+          ok: false,
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "Could not validate your Fal API key.",
+        };
+      }
+
       setProviderSettings({
         falApiKey,
-        lastValidatedAt: validatedAt,
+        lastValidatedAt: validatedAt ?? new Date().toISOString(),
       });
       setProviderConnectionStatus("connected");
-      setProviderSettingsOpen(false);
 
-      return { ok: true };
+      return {
+        ok: true,
+        successMessage: "Fal API key connected for this browser session.",
+      };
     },
     []
   );
@@ -1712,8 +1970,8 @@ export function useStudioMockRuntime(appMode: StudioAppMode) {
   }, []);
 
   const setSelectedModelId = useCallback((modelId: string) => {
-    setSelectedModelIdState(modelId);
-  }, []);
+    setSelectedModelIdState(getVisibleModelId(modelId));
+  }, [getVisibleModelId]);
 
   const generate = useCallback(() => {
     if (!canGenerateWithDraft(selectedModel, currentDraft)) {

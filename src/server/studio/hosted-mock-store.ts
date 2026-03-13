@@ -10,7 +10,7 @@ import {
 } from "@/features/studio/studio-local-runtime-data";
 import { createAudioThumbnailUrl } from "@/features/studio/studio-asset-thumbnails";
 import {
-  getHostedStudioConcurrencyLimit,
+  getHostedStudioFairShare,
   getStudioRunCompletionDelayMs,
   quoteStudioDraftCredits,
   shouldStudioMockRunFail,
@@ -19,7 +19,14 @@ import {
   reorderStudioFoldersByIds,
 } from "@/features/studio/studio-folder-order";
 import { getStudioModelById } from "@/features/studio/studio-model-catalog";
-import type { HostedStudioMutation } from "@/features/studio/studio-hosted-mock-api";
+import type {
+  HostedStudioMutation,
+  HostedStudioUploadManifestEntry,
+} from "@/features/studio/studio-hosted-mock-api";
+import {
+  getStudioUploadedMediaKind,
+  studioUploadSupportsAlpha,
+} from "@/features/studio/studio-upload-files";
 import type {
   GenerationRun,
   LibraryItem,
@@ -33,6 +40,11 @@ type HostedFileRecord = {
   bytes: Uint8Array;
   fileName: string;
   mimeType: string;
+};
+
+type HostedUploadedFileEntry = {
+  file: File;
+  metadata: HostedStudioUploadManifestEntry;
 };
 
 type HostedMockStore = {
@@ -52,6 +64,66 @@ function clearTimer(timer: ReturnType<typeof setTimeout> | undefined) {
   if (timer) {
     clearTimeout(timer);
   }
+}
+
+function resolveHostedMockUserId(snapshot: StudioWorkspaceSnapshot) {
+  return snapshot.profile.id;
+}
+
+function createHostedMockFileUrl(fileId: string) {
+  return `/api/mock/studio/hosted/files/${encodeURIComponent(fileId)}`;
+}
+
+function createHostedMutationInputPayload(params: {
+  modelId: string;
+  prompt: string;
+  requestMode: GenerationRun["requestMode"];
+  referenceCount: number;
+}) {
+  return {
+    prompt: params.prompt,
+    request_mode: params.requestMode,
+    reference_count: params.referenceCount,
+    reference_asset_ids: [],
+    reference_run_file_ids: [],
+    model_id: params.modelId,
+  };
+}
+
+function validateHostedUploadedFiles(params: {
+  files: File[];
+  manifest: HostedStudioUploadManifestEntry[];
+}) {
+  if (params.files.length === 0) {
+    throw new Error("No files were provided.");
+  }
+
+  if (params.files.length !== params.manifest.length) {
+    throw new Error("Upload metadata did not match the provided files.");
+  }
+
+  return params.files.map((file, index) => {
+    const metadata = params.manifest[index];
+    const inferredKind = getStudioUploadedMediaKind({
+      fileName: file.name,
+      mimeType: file.type,
+    });
+
+    if (!metadata || !inferredKind || inferredKind !== metadata.kind) {
+      throw new Error(`Unsupported upload: ${file.name}`);
+    }
+
+    return {
+      file,
+      metadata: {
+        ...metadata,
+        hasAlpha:
+          metadata.kind === "image"
+            ? metadata.hasAlpha || studioUploadSupportsAlpha(file.type)
+            : false,
+      },
+    } satisfies HostedUploadedFileEntry;
+  });
 }
 
 function getHostedWorkspaceId(snapshot: StudioWorkspaceSnapshot) {
@@ -99,12 +171,13 @@ function scheduleDispatch(store: HostedMockStore, runId: string, delayMs = 320) 
     const processingCount = store.snapshot.generationRuns.filter(
       (entry) => entry.status === "processing"
     ).length;
+    const fairShare = getHostedStudioFairShare({
+      queueSettings: store.snapshot.queueSettings,
+      userId: resolveHostedMockUserId(store.snapshot),
+    });
 
-    if (
-      processingCount >=
-      getHostedStudioConcurrencyLimit(store.snapshot.queueSettings)
-    ) {
-      scheduleDispatch(store, runId, 450);
+    if (processingCount >= fairShare.maxProcessing) {
+      scheduleDispatch(store, runId, fairShare.nextRetryDelayMs);
       return;
     }
 
@@ -467,10 +540,13 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
         outputAssetId: null,
         previewUrl: createGenerationRunPreviewUrl(model, hydrateDraft(persistedDraft, model)),
         errorMessage: null,
-        inputPayload: {
+        inputPayload: createHostedMutationInputPayload({
+          modelId: model.id,
           prompt: persistedDraft.prompt,
-          request_mode: model.requestMode,
-        },
+          requestMode: model.requestMode,
+          referenceCount:
+            "referenceCount" in mutation.draft ? mutation.draft.referenceCount : 0,
+        }),
         inputSettings: persistedDraft,
         providerRequestId: null,
         providerStatus: "queued",
@@ -529,14 +605,20 @@ export async function mutateHostedMockSnapshot(mutation: HostedStudioMutation) {
 export async function uploadHostedMockFiles(params: {
   files: File[];
   folderId: string | null;
+  manifest: HostedStudioUploadManifestEntry[];
 }) {
   const store = getStore();
   const createdAt = new Date().toISOString();
+  const entries = validateHostedUploadedFiles({
+    files: params.files,
+    manifest: params.manifest,
+  });
 
-  for (const file of params.files) {
+  for (const entry of entries) {
+    const { file, metadata } = entry;
     const bytes = new Uint8Array(await file.arrayBuffer());
     const runFileId = createStudioId("run-file");
-    const previewUrl = `/api/mock/studio/hosted/files/${runFileId}`;
+    const previewUrl = createHostedMockFileUrl(runFileId);
 
     store.files.set(runFileId, {
       bytes,
@@ -552,23 +634,19 @@ export async function uploadHostedMockFiles(params: {
       sourceType: "uploaded",
       storageBucket: "mock-api",
       storagePath: runFileId,
-        mimeType: file.type || "application/octet-stream",
-        fileName: file.name,
-        fileSizeBytes: file.size,
-        mediaWidth: null,
-        mediaHeight: null,
-        mediaDurationSeconds: null,
-        aspectRatioLabel: null,
-        hasAlpha: /image\/(png|webp|gif|svg\+xml)/i.test(file.type),
-        metadata: {},
-        createdAt,
-      };
+      mimeType: file.type || "application/octet-stream",
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      mediaWidth: metadata.mediaWidth,
+      mediaHeight: metadata.mediaHeight,
+      mediaDurationSeconds: metadata.mediaDurationSeconds,
+      aspectRatioLabel: metadata.aspectRatioLabel,
+      hasAlpha: metadata.hasAlpha,
+      metadata: {},
+      createdAt,
+    };
 
-    const kind = file.type.startsWith("video/")
-      ? "video"
-      : file.type.startsWith("audio/")
-        ? "audio"
-        : "image";
+    const kind = metadata.kind;
     const thumbnailUrl =
       kind === "audio"
         ? createAudioThumbnailUrl({
@@ -601,11 +679,11 @@ export async function uploadHostedMockFiles(params: {
         kind === "audio"
           ? `${file.type || "Audio"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`
           : `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
-      mediaWidth: null,
-      mediaHeight: null,
-      mediaDurationSeconds: null,
-      aspectRatioLabel: null,
-      hasAlpha: /image\/(png|webp|gif|svg\+xml)/i.test(file.type),
+      mediaWidth: metadata.mediaWidth,
+      mediaHeight: metadata.mediaHeight,
+      mediaDurationSeconds: metadata.mediaDurationSeconds,
+      aspectRatioLabel: metadata.aspectRatioLabel,
+      hasAlpha: metadata.hasAlpha,
       folderId: params.folderId,
       folderIds: params.folderId ? [params.folderId] : [],
       storageBucket: "mock-api",

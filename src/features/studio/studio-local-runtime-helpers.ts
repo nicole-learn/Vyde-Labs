@@ -2,6 +2,12 @@
 
 import { readUploadedAssetMediaMetadata } from "./studio-asset-metadata";
 import { createAudioThumbnailUrl } from "./studio-asset-thumbnails";
+import {
+  getLibraryItemDownloadFileName,
+  getLibraryItemFallbackMimeType,
+  readLibraryItemSourceBlob,
+} from "./studio-library-item-source";
+import { getStudioUploadedMediaKind, studioUploadSupportsAlpha } from "./studio-upload-files";
 import type {
   DraftReference,
   LibraryItem,
@@ -15,18 +21,6 @@ import { createStudioId } from "./studio-local-runtime-data";
 
 export const STUDIO_MEDIA_UPLOAD_ACCEPT = "image/*,video/*,audio/*";
 
-const AUDIO_EXTENSIONS = new Set([
-  "mp3",
-  "wav",
-  "m4a",
-  "aac",
-  "ogg",
-  "flac",
-  "aiff",
-  "aif",
-  "opus",
-]);
-
 function sanitizeFileName(rawValue: string) {
   return rawValue
     .trim()
@@ -35,54 +29,6 @@ function sanitizeFileName(rawValue: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function getFileExtension(params: {
-  kind: LibraryItem["kind"];
-  mimeType: string | null;
-  fileName?: string | null;
-}) {
-  const normalizedMimeType = params.mimeType?.toLowerCase() ?? "";
-  const normalizedFileName = params.fileName?.toLowerCase() ?? "";
-
-  if (normalizedFileName.includes(".")) {
-    return normalizedFileName.split(".").pop() ?? "bin";
-  }
-  if (normalizedMimeType.includes("png")) return "png";
-  if (normalizedMimeType.includes("jpeg") || normalizedMimeType.includes("jpg")) {
-    return "jpg";
-  }
-  if (normalizedMimeType.includes("svg")) return "svg";
-  if (normalizedMimeType.includes("webp")) return "webp";
-  if (normalizedMimeType.includes("mp4")) return "mp4";
-  if (normalizedMimeType.includes("webm")) return "webm";
-  if (normalizedMimeType.includes("mpeg")) return "mp3";
-  if (normalizedMimeType.includes("wav")) return "wav";
-  if (normalizedMimeType.includes("flac")) return "flac";
-  if (normalizedMimeType.includes("x-m4a") || normalizedMimeType.includes("audio/mp4")) {
-    return "m4a";
-  }
-  if (params.kind === "video") return "mp4";
-  if (params.kind === "audio") return "mp3";
-  if (params.kind === "text") return "txt";
-  return "png";
-}
-
-function getFallbackMimeType(item: LibraryItem) {
-  if (item.kind === "video") return "video/mp4";
-  if (item.kind === "audio") {
-    const extension = getFileExtension({
-      kind: item.kind,
-      mimeType: item.mimeType,
-      fileName: item.fileName,
-    });
-
-    if (extension === "wav") return "audio/wav";
-    if (extension === "flac") return "audio/flac";
-    if (extension === "m4a") return "audio/mp4";
-    return "audio/mpeg";
-  }
-  if (item.kind === "text") return "text/plain";
-  return "image/png";
-}
 
 export function revokePreviewUrl(url: string | null | undefined) {
   if (url?.startsWith("blob:")) {
@@ -126,11 +72,15 @@ export function getReferenceInputKindFromFile(
   file: Pick<File, "name" | "type">
 ): StudioReferenceInputKind {
   const mimeType = file.type.trim().toLowerCase();
-  const extension = file.name.trim().toLowerCase().split(".").pop() ?? null;
+  const mediaKind = getStudioUploadedMediaKind({
+    fileName: file.name,
+    mimeType,
+  });
 
-  if (mimeType.startsWith("image/")) return "image";
-  if (mimeType.startsWith("video/")) return "video";
-  if (mimeType.startsWith("audio/")) return "audio";
+  if (mediaKind) {
+    return mediaKind;
+  }
+
   if (
     mimeType === "application/pdf" ||
     mimeType === "text/plain" ||
@@ -141,7 +91,6 @@ export function getReferenceInputKindFromFile(
     return "document";
   }
 
-  if (extension && AUDIO_EXTENSIONS.has(extension)) return "audio";
   return "document";
 }
 
@@ -281,34 +230,30 @@ export async function resolveLibraryItemToReferenceFile(
     return null;
   }
 
-  const baseFileName = sanitizeFileName(item.title) || "reference";
-  const extension = getFileExtension({
-    kind: item.kind,
-    mimeType: item.mimeType,
-    fileName: item.fileName,
-  });
-  const fileName = `${baseFileName}.${extension}`;
+  const fileName = getLibraryItemDownloadFileName(item);
+  const sourceBlob = await readLibraryItemSourceBlob(item);
 
-  const sourcePreviewUrl =
-    item.kind === "audio" ? item.previewUrl : item.thumbnailUrl ?? item.previewUrl;
-
-  if (sourcePreviewUrl) {
-    try {
-      const response = await fetch(sourcePreviewUrl);
-      const blob = await response.blob();
-      const mimeType = blob.type || item.mimeType || getFallbackMimeType(item);
-      return new File([blob], fileName, {
-        type: mimeType,
-        lastModified: Date.parse(item.createdAt) || Date.now(),
-      });
-    } catch {
-      // Fall through to an SVG placeholder if the preview cannot be materialized.
-    }
+  if (sourceBlob) {
+    const mimeType = sourceBlob.type || getLibraryItemFallbackMimeType(item);
+    return new File([sourceBlob], fileName, {
+      type: mimeType,
+      lastModified: Date.parse(item.createdAt) || Date.now(),
+    });
   }
 
   if (item.kind === "audio") {
     return null;
   }
+
+  const escapeSvgText = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const baseFileName = sanitizeFileName(item.title) || "reference";
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900">
@@ -320,10 +265,10 @@ export async function resolveLibraryItemToReferenceFile(
       </defs>
       <rect width="1200" height="900" rx="40" fill="url(#bg)" />
       <rect x="48" y="48" width="1104" height="804" rx="32" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)" />
-      <text x="96" y="180" fill="#ffffff" font-size="78" font-family="Arial, Helvetica, sans-serif" font-weight="700">${item.title}</text>
+      <text x="96" y="180" fill="#ffffff" font-size="78" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeSvgText(item.title)}</text>
       <foreignObject x="96" y="260" width="960" height="360">
         <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, Helvetica, sans-serif; font-size: 34px; line-height: 1.4; color: rgba(255,255,255,0.72);">
-          ${item.prompt || item.meta}
+          ${escapeSvgText(item.prompt || item.meta)}
         </div>
       </foreignObject>
     </svg>
@@ -394,13 +339,10 @@ export async function createUploadedRunFileAndLibraryItem(params: {
   folderId: string | null;
 }): Promise<{ runFile: StudioRunFile; item: LibraryItem } | null> {
   const fileType = params.file.type.toLowerCase();
-  const kind = fileType.startsWith("image/")
-    ? "image"
-    : fileType.startsWith("video/")
-      ? "video"
-      : fileType.startsWith("audio/")
-        ? "audio"
-      : null;
+  const kind = getStudioUploadedMediaKind({
+    fileName: params.file.name,
+    mimeType: fileType,
+  });
 
   if (!kind) {
     return null;
@@ -411,6 +353,7 @@ export async function createUploadedRunFileAndLibraryItem(params: {
     kind,
     previewUrl,
     mimeType: params.file.type,
+    hasAlpha: studioUploadSupportsAlpha(params.file.type),
   });
   const timestamp = new Date().toISOString();
   const runFileId = createStudioId("run-file");

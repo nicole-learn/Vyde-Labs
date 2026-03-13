@@ -2,6 +2,8 @@
 
 import { FolderPlus } from "lucide-react";
 import {
+  useCallback,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -11,6 +13,7 @@ import {
   isStudioItemDrag,
   parseDraggedLibraryItemIds,
 } from "../studio-drag-data";
+import { useDragHoverReset } from "../use-drag-hover-reset";
 import { useFolderReorder } from "../use-folder-reorder";
 import type { StudioFolder } from "../types";
 
@@ -87,10 +90,24 @@ function FolderRow({
   onRename,
 }: FolderRowProps) {
   const [dragOver, setDragOver] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const registerRow = useCallback(
+    (node: HTMLDivElement | null) => {
+      rowRef.current = node;
+      onRegisterNode(node);
+    },
+    [onRegisterNode]
+  );
+
+  useDragHoverReset({
+    active: dragOver,
+    containerRef: rowRef,
+    onReset: () => setDragOver(false),
+  });
 
   return (
     <div
-      ref={onRegisterNode}
+      ref={registerRow}
       className={cn(
         "group relative select-none transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
         dragOverlay ? "pointer-events-none" : undefined

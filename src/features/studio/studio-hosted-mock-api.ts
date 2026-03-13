@@ -1,11 +1,21 @@
 import type {
   GenerationRun,
+  LibraryItemKind,
   PersistedStudioDraft,
   StudioWorkspaceSnapshot,
 } from "./types";
 
 export interface HostedStudioSnapshotResponse {
   snapshot: StudioWorkspaceSnapshot;
+}
+
+export interface HostedStudioUploadManifestEntry {
+  kind: Extract<LibraryItemKind, "image" | "video" | "audio">;
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  mediaDurationSeconds: number | null;
+  aspectRatioLabel: string | null;
+  hasAlpha: boolean;
 }
 
 export type HostedStudioMutation =

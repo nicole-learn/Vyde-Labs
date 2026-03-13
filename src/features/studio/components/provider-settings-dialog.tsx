@@ -49,7 +49,9 @@ function ProviderSettingsForm({
         }
 
         setSaving(false);
-        setSuccessMessage("Fal API key connected for this browser session.");
+        setSuccessMessage(
+          result.successMessage ?? "Fal API key connected for this browser session."
+        );
       }}
     >
       <label className="block">
@@ -114,14 +116,14 @@ function ProviderSettingsForm({
           disabled={saving}
           className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70 transition hover:border-white/20 hover:text-white disabled:opacity-50"
         >
-          Cancel
+          {successMessage ? "Close" : "Cancel"}
         </button>
         <button
           type="submit"
           disabled={saving}
           className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:brightness-110 disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save Settings"}
+          {saving ? "Checking..." : "Save Settings"}
         </button>
       </div>
     </form>
@@ -142,6 +144,7 @@ export function ProviderSettingsDialog({
       onClose={onClose}
     >
       <ProviderSettingsForm
+        key={`${initialValues.falApiKey}:${initialValues.lastValidatedAt ?? "none"}`}
         initialValues={initialValues}
         onClose={onClose}
         onSave={onSave}

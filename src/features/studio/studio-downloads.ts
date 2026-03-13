@@ -1,59 +1,19 @@
 "use client";
 
+import {
+  getLibraryItemDownloadFileName,
+  readLibraryItemSourceBlob,
+} from "./studio-library-item-source";
 import type { LibraryItem } from "./types";
 
-function sanitizeBaseName(rawValue: string) {
-  return (
-    rawValue.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
-    "asset"
-  );
+declare global {
+  interface Window {
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  }
 }
 
-function getExtensionFromMimeType(mimeType: string | null) {
-  const normalized = mimeType?.toLowerCase() ?? "";
-
-  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
-  if (normalized.includes("png")) return "png";
-  if (normalized.includes("webp")) return "webp";
-  if (normalized.includes("gif")) return "gif";
-  if (normalized.includes("svg")) return "svg";
-  if (normalized.includes("mp4")) return "mp4";
-  if (normalized.includes("webm")) return "webm";
-  if (normalized.includes("quicktime")) return "mov";
-  if (normalized.includes("mpeg")) return "mp3";
-  if (normalized.includes("wav")) return "wav";
-  if (normalized.includes("flac")) return "flac";
-  if (normalized.includes("audio/mp4") || normalized.includes("x-m4a")) return "m4a";
-  if (normalized.includes("plain")) return "txt";
-
-  return null;
-}
-
-function getDownloadFileName(item: LibraryItem) {
-  if (item.fileName?.trim()) {
-    return item.fileName.trim();
-  }
-
-  const safeBaseName = sanitizeBaseName(item.title);
-  const extension = getExtensionFromMimeType(item.mimeType);
-
-  if (extension) {
-    return `${safeBaseName}.${extension}`;
-  }
-
-  if (item.kind === "text") {
-    return `${safeBaseName}.txt`;
-  }
-
-  if (item.kind === "video") {
-    return `${safeBaseName}.mp4`;
-  }
-
-  if (item.kind === "audio") {
-    return `${safeBaseName}.mp3`;
-  }
-
-  return `${safeBaseName}.png`;
+async function getDownloadBlob(item: LibraryItem) {
+  return readLibraryItemSourceBlob(item);
 }
 
 function triggerDownload(url: string, fileName: string) {
@@ -67,31 +27,59 @@ function triggerDownload(url: string, fileName: string) {
   link.remove();
 }
 
-export function downloadLibraryItem(item: LibraryItem) {
+async function writeBlobToDirectory(
+  directoryHandle: FileSystemDirectoryHandle,
+  fileName: string,
+  blob: Blob
+) {
+  const fileHandle = await directoryHandle.getFileHandle(fileName, {
+    create: true,
+  });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+export async function downloadLibraryItem(item: LibraryItem) {
   if (typeof window === "undefined") return;
 
-  const fileName = getDownloadFileName(item);
-
-  if (item.kind === "text") {
-    const blob = new Blob([item.contentText || item.prompt || item.title], {
-      type: item.mimeType || "text/plain;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, fileName);
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  const blob = await getDownloadBlob(item);
+  if (!blob) {
     return;
   }
 
-  if (!item.previewUrl) return;
-  triggerDownload(item.previewUrl, fileName);
+  const fileName = getLibraryItemDownloadFileName(item);
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, fileName);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function downloadFolderItems(items: LibraryItem[]) {
+export async function downloadFolderItems(items: LibraryItem[]) {
   if (items.length === 0 || typeof window === "undefined") return;
 
-  items.forEach((item, index) => {
-    window.setTimeout(() => {
-      downloadLibraryItem(item);
-    }, index * 120);
-  });
+  if (items.length > 1 && typeof window.showDirectoryPicker === "function") {
+    try {
+      const directoryHandle = await window.showDirectoryPicker();
+      for (const item of items) {
+        const blob = await getDownloadBlob(item);
+        if (!blob) {
+          continue;
+        }
+
+        await writeBlobToDirectory(
+          directoryHandle,
+          getLibraryItemDownloadFileName(item),
+          blob
+        );
+      }
+      return;
+    } catch {
+      // Fall back to regular browser downloads when the picker is unavailable or cancelled.
+    }
+  }
+
+  for (const item of items) {
+    await downloadLibraryItem(item);
+    await new Promise((resolve) => window.setTimeout(resolve, 80));
+  }
 }

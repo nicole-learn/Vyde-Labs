@@ -1,5 +1,10 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getHostedMockFile } from "@/server/studio/hosted-mock-store";
+import {
+  HOSTED_MOCK_SESSION_COOKIE,
+  isValidHostedMockSessionToken,
+} from "@/server/studio/hosted-mock-session";
 
 interface HostedMockFileRouteContext {
   params: Promise<{
@@ -11,6 +16,12 @@ export async function GET(
   _request: Request,
   context: HostedMockFileRouteContext
 ) {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(HOSTED_MOCK_SESSION_COOKIE)?.value ?? null;
+  if (!isValidHostedMockSessionToken(sessionToken)) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
   const { fileId } = await context.params;
   const file = getHostedMockFile(fileId);
 

@@ -267,6 +267,7 @@ export interface StudioProviderSettings {
 export interface StudioProviderSaveResult {
   ok: boolean;
   errorMessage?: string;
+  successMessage?: string;
 }
 
 export interface StudioWorkspaceDomainState {

@@ -66,6 +66,20 @@ function RailButton({
   );
 }
 
+function getFolderRailLabel(name: string) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return "FD";
+  }
+
+  const words = trimmedName.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0]?.charAt(0) ?? ""}${words[1]?.charAt(0) ?? ""}`.toUpperCase();
+  }
+
+  return trimmedName.slice(0, 2).toUpperCase();
+}
+
 export function StudioMobileRail({
   appMode,
   accountLabel,
@@ -100,7 +114,7 @@ export function StudioMobileRail({
 
       <div className="stable-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-2 pt-1">
         {folders.map((folder) => {
-          const initial = folder.name.charAt(0).toUpperCase() || "F";
+          const folderLabel = getFolderRailLabel(folder.name);
           return (
             <button
               key={folder.id}
@@ -116,7 +130,9 @@ export function StudioMobileRail({
                   : "bg-primary/10 text-primary hover:bg-primary/15"
               )}
             >
-              {initial}
+              <span className="text-[13px] font-semibold tracking-[0.08em]">
+                {folderLabel}
+              </span>
             </button>
           );
         })}
