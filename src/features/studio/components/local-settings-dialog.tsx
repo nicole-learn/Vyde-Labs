@@ -46,8 +46,8 @@ export function LocalSettingsDialog({
         </label>
 
         <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white/62">
-          Vyde Labs stores the key in this browser only for local use. This build
-          is not connected to a hosted backend yet.
+          The local version keeps your key in this browser so you can run Vyde Labs
+          with your own Fal account.
         </div>
 
         <div className="flex items-center justify-end gap-3">

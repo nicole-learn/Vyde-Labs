@@ -61,7 +61,8 @@ export interface LibraryItem {
   modelId: string | null;
   prompt: string;
   meta: string;
-  folderIds: string[];
+  aspectRatio: number;
+  folderId: string | null;
 }
 
 export interface GenerationRun {

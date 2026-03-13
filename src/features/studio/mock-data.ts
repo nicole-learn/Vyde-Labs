@@ -84,11 +84,20 @@ function createPreviewSvg({
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function parseAspectRatioValue(value: string): number {
+  const [width, height] = value.split(":").map((part) => Number(part));
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return 1;
+  }
+
+  return width / height;
+}
+
 export function createGeneratedItem(params: {
   model: StudioModelDefinition;
   draft: StudioDraft;
   createdAt: string;
-  folderIds: string[];
+  folderId: string | null;
 }): LibraryItem {
   const title = params.draft.prompt.trim().slice(0, 40) || params.model.name;
   const backgroundPairs: Record<StudioModelKind, string> = {
@@ -115,7 +124,8 @@ export function createGeneratedItem(params: {
       modelId: params.model.id,
       prompt: params.draft.prompt,
       meta: `${params.model.name} • ${params.draft.maxTokens} max tokens • ${params.draft.tone}`,
-      folderIds: params.folderIds,
+      aspectRatio: 0.82,
+      folderId: params.folderId,
     };
   }
 
@@ -139,7 +149,8 @@ export function createGeneratedItem(params: {
       params.model.kind === "image"
         ? `${params.model.name} • ${params.draft.aspectRatio} • ${params.draft.resolution}`
         : `${params.model.name} • ${params.draft.durationSeconds}s • ${params.draft.resolution}`,
-    folderIds: params.folderIds,
+    aspectRatio: parseAspectRatioValue(params.draft.aspectRatio),
+    folderId: params.folderId,
   };
 }
 
@@ -206,19 +217,19 @@ export function createSeedState() {
       model: imageModel,
       draft: imageDraft,
       createdAt: createdAt[0],
-      folderIds: [folders[0].id],
+      folderId: folders[0].id,
     }),
     createGeneratedItem({
       model: videoModel,
       draft: videoDraft,
       createdAt: createdAt[1],
-      folderIds: [folders[1].id],
+      folderId: folders[1].id,
     }),
     createGeneratedItem({
       model: textModel,
       draft: textDraft,
       createdAt: createdAt[2],
-      folderIds: [folders[2].id],
+      folderId: folders[2].id,
     }),
   ];
 

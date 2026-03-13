@@ -26,22 +26,21 @@ import type {
   StudioFolder,
 } from "./types";
 
-function revokePreview(url: string | undefined) {
+function revokePreview(url: string | null | undefined) {
   if (url?.startsWith("blob:")) {
     URL.revokeObjectURL(url);
   }
 }
 
-function cleanupUploadedItemPreview(
+function releaseUploadedPreview(
   item: LibraryItem | undefined,
   previewUrls: Map<string, string>
 ) {
-  if (!item?.previewUrl || item.source !== "uploaded") {
+  if (!item || item.source !== "uploaded" || !item.previewUrl) {
     return;
   }
 
-  const previewUrl = previewUrls.get(item.id) ?? item.previewUrl;
-  revokePreview(previewUrl);
+  revokePreview(previewUrls.get(item.id) ?? item.previewUrl);
   previewUrls.delete(item.id);
 }
 
@@ -49,7 +48,7 @@ function createFolderCounts(folders: StudioFolder[], items: LibraryItem[]) {
   return Object.fromEntries(
     folders.map((folder) => [
       folder.id,
-      items.filter((item) => item.folderIds.includes(folder.id)).length,
+      items.filter((item) => item.folderId === folder.id).length,
     ])
   ) as Record<string, number>;
 }
@@ -58,37 +57,116 @@ function removeTimer(timerIds: number[], timerId: number) {
   return timerIds.filter((entry) => entry !== timerId);
 }
 
+function createTextItem(params: {
+  title: string;
+  body: string;
+  folderId: string | null;
+}): LibraryItem {
+  const trimmedBody = params.body.trim();
+  const fallbackTitle = trimmedBody.slice(0, 36) || "Text note";
+
+  return {
+    id: createId("asset"),
+    title: params.title.trim() || fallbackTitle,
+    kind: "text",
+    source: "uploaded",
+    previewUrl: null,
+    contentText: trimmedBody,
+    createdAt: new Date().toISOString(),
+    modelId: null,
+    prompt: trimmedBody,
+    meta: "Text note",
+    aspectRatio: 0.82,
+    folderId: params.folderId,
+  };
+}
+
+function createUploadedItem(file: File, folderId: string | null): LibraryItem {
+  const fileType = file.type.toLowerCase();
+  const kind =
+    fileType.startsWith("image/")
+      ? "image"
+      : fileType.startsWith("video/")
+        ? "video"
+        : "file";
+  const previewUrl =
+    kind === "image" || kind === "video" ? URL.createObjectURL(file) : null;
+  const aspectRatio =
+    kind === "video" ? 16 / 9 : kind === "image" ? 4 / 5 : 0.82;
+
+  return {
+    id: createId("asset"),
+    title: file.name,
+    kind,
+    source: "uploaded",
+    previewUrl,
+    contentText: null,
+    createdAt: new Date().toISOString(),
+    modelId: null,
+    prompt: "",
+    meta: `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
+    aspectRatio,
+    folderId,
+  };
+}
+
+function hasFolderNameConflict(
+  folders: StudioFolder[],
+  nextName: string,
+  targetFolderId: string | null
+) {
+  const normalizedName = nextName.trim().toLowerCase();
+  return folders.some(
+    (folder) =>
+      folder.id !== targetFolderId &&
+      folder.name.trim().toLowerCase() === normalizedName
+  );
+}
+
 export function useStudioApp() {
-  const seed = useMemo(() => createSeedState(), []);
+  const seedState = useMemo(() => createSeedState(), []);
+  const previewUrlsRef = useRef(new Map<string, string>());
+  const pendingTimersRef = useRef<number[]>([]);
+
   const [models] = useState(STUDIO_MODELS);
   const [selectedModelId, setSelectedModelId] = useState(STUDIO_MODELS[0].id);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [folders, setFolders] = useState(seed.folders);
-  const [items, setItems] = useState(seed.items);
-  const [runs, setRuns] = useState(seed.runs);
+  const [folders, setFolders] = useState(seedState.folders);
+  const [items, setItems] = useState(seedState.items);
+  const [runs, setRuns] = useState(seedState.runs);
   const [draftsByModelId, setDraftsByModelId] = useState(buildDraftMap);
-  const [gridDensity, setGridDensity] = useState(() => loadStoredGridDensity() ?? 3);
+  const [gallerySizeLevel, setGallerySizeLevel] = useState(
+    () => loadStoredGridDensity() ?? 2
+  );
   const [settings, setSettings] = useState<LocalProviderSettings>(
     () => loadStoredSettings() ?? { falApiKey: "" }
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [folderEditorOpen, setFolderEditorOpen] = useState(false);
-  const [folderEditorMode, setFolderEditorMode] = useState<"create" | "rename">("create");
+  const [folderEditorMode, setFolderEditorMode] = useState<"create" | "rename">(
+    "create"
+  );
   const [folderEditorValue, setFolderEditorValue] = useState("");
-  const [folderEditorTargetId, setFolderEditorTargetId] = useState<string | null>(null);
-  const uploadUrlsRef = useRef(new Map<string, string>());
-  const pendingTimersRef = useRef<number[]>([]);
+  const [folderEditorTargetId, setFolderEditorTargetId] = useState<string | null>(
+    null
+  );
+  const [folderEditorError, setFolderEditorError] = useState<string | null>(null);
+  const [selectionModeEnabled, setSelectionModeEnabled] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [createTextDialogOpen, setCreateTextDialogOpen] = useState(false);
+  const [createTextTitle, setCreateTextTitle] = useState("");
+  const [createTextBody, setCreateTextBody] = useState("");
 
   useEffect(() => {
-    saveStoredGridDensity(gridDensity);
-  }, [gridDensity]);
+    saveStoredGridDensity(gallerySizeLevel);
+  }, [gallerySizeLevel]);
 
   useEffect(() => {
     saveStoredSettings(settings);
   }, [settings]);
 
   useEffect(() => {
-    const previewUrls = uploadUrlsRef.current;
+    const previewUrls = previewUrlsRef.current;
     const pendingTimers = pendingTimersRef.current;
 
     return () => {
@@ -106,23 +184,44 @@ export function useStudioApp() {
     () => models.find((model) => model.id === selectedModelId) ?? models[0],
     [models, selectedModelId]
   );
-  const currentDraft = draftsByModelId[selectedModel.id] ?? createDraft(selectedModel);
+
+  const currentDraft =
+    draftsByModelId[selectedModel.id] ?? createDraft(selectedModel);
+
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === selectedFolderId) ?? null,
     [folders, selectedFolderId]
   );
-  const filteredItems = useMemo(() => {
+
+  const ungroupedItems = useMemo(
+    () => items.filter((item) => item.folderId === null),
+    [items]
+  );
+
+  const selectedFolderItems = useMemo(() => {
     if (!selectedFolderId) {
-      return items;
+      return [];
     }
 
-    return items.filter((item) => item.folderIds.includes(selectedFolderId));
+    return items.filter((item) => item.folderId === selectedFolderId);
   }, [items, selectedFolderId]);
+
+  const pendingRuns = useMemo(
+    () => runs.filter((run) => run.status === "running" && !run.outputItemId),
+    [runs]
+  );
+
   const folderCounts = useMemo(
     () => createFolderCounts(folders, items),
     [folders, items]
   );
-  const allCount = items.length;
+
+  const selectedItemIdSet = useMemo(
+    () => new Set(selectedItemIds),
+    [selectedItemIds]
+  );
+
+  const selectedItemCount = selectedItemIds.length;
   const hasFalKey = settings.falApiKey.trim().length > 0;
 
   const updateDraft = useCallback(
@@ -165,16 +264,40 @@ export function useStudioApp() {
     [currentDraft.references, updateDraft]
   );
 
+  const clearSelection = useCallback(() => {
+    setSelectedItemIds([]);
+  }, []);
+
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionModeEnabled((current) => {
+      if (current) {
+        setSelectedItemIds([]);
+      }
+
+      return !current;
+    });
+  }, []);
+
+  const toggleItemSelection = useCallback((itemId: string) => {
+    setSelectedItemIds((current) =>
+      current.includes(itemId)
+        ? current.filter((entry) => entry !== itemId)
+        : [...current, itemId]
+    );
+  }, []);
+
   const resetFolderEditor = useCallback(() => {
     setFolderEditorOpen(false);
     setFolderEditorValue("");
     setFolderEditorTargetId(null);
+    setFolderEditorError(null);
   }, []);
 
   const openCreateFolder = useCallback(() => {
     setFolderEditorMode("create");
     setFolderEditorTargetId(null);
     setFolderEditorValue("");
+    setFolderEditorError(null);
     setFolderEditorOpen(true);
   }, []);
 
@@ -186,19 +309,28 @@ export function useStudioApp() {
       setFolderEditorMode("rename");
       setFolderEditorTargetId(folder.id);
       setFolderEditorValue(folder.name);
+      setFolderEditorError(null);
       setFolderEditorOpen(true);
     },
     [folders]
   );
 
   const saveFolder = useCallback(() => {
-    const value = folderEditorValue.trim();
-    if (!value) return;
+    const nextName = folderEditorValue.trim();
+    if (!nextName) {
+      setFolderEditorError("Folder name is required.");
+      return;
+    }
+
+    if (hasFolderNameConflict(folders, nextName, folderEditorTargetId)) {
+      setFolderEditorError("A folder with that name already exists.");
+      return;
+    }
 
     if (folderEditorMode === "create") {
       const nextFolder: StudioFolder = {
         id: createId("folder"),
-        name: value,
+        name: nextName,
         createdAt: new Date().toISOString(),
       };
 
@@ -212,7 +344,9 @@ export function useStudioApp() {
 
     setFolders((current) =>
       current.map((folder) =>
-        folder.id === folderEditorTargetId ? { ...folder, name: value } : folder
+        folder.id === folderEditorTargetId
+          ? { ...folder, name: nextName }
+          : folder
       )
     );
     resetFolderEditor();
@@ -220,19 +354,35 @@ export function useStudioApp() {
     folderEditorMode,
     folderEditorTargetId,
     folderEditorValue,
+    folders,
     resetFolderEditor,
   ]);
 
-  const deleteFolder = useCallback((folderId: string) => {
-    setFolders((current) => current.filter((folder) => folder.id !== folderId));
-    setItems((current) =>
-      current.map((item) => ({
-        ...item,
-        folderIds: item.folderIds.filter((entry) => entry !== folderId),
-      }))
-    );
-    setSelectedFolderId((current) => (current === folderId ? null : current));
-  }, []);
+  const moveItemsToFolder = useCallback(
+    (itemIds: string[], folderId: string | null) => {
+      if (itemIds.length === 0) return;
+
+      const itemIdSet = new Set(itemIds);
+      setItems((current) =>
+        current.map((item) =>
+          itemIdSet.has(item.id) ? { ...item, folderId } : item
+        )
+      );
+    },
+    []
+  );
+
+  const deleteFolder = useCallback(
+    (folderId: string) => {
+      setFolders((current) => current.filter((folder) => folder.id !== folderId));
+      moveItemsToFolder(
+        items.filter((item) => item.folderId === folderId).map((item) => item.id),
+        null
+      );
+      setSelectedFolderId((current) => (current === folderId ? null : current));
+    },
+    [items, moveItemsToFolder]
+  );
 
   const reuseRun = useCallback(
     (runId: string) => {
@@ -278,64 +428,53 @@ export function useStudioApp() {
     [items, reuseRun, runs]
   );
 
-  const deleteItem = useCallback((itemId: string) => {
-    setItems((current) => {
-      const target = current.find((item) => item.id === itemId);
-      cleanupUploadedItemPreview(target, uploadUrlsRef.current);
-      return current.filter((item) => item.id !== itemId);
-    });
+  const deleteItems = useCallback((itemIds: string[]) => {
+    if (itemIds.length === 0) return;
 
+    const itemIdSet = new Set(itemIds);
+    setItems((current) => {
+      for (const item of current) {
+        if (itemIdSet.has(item.id)) {
+          releaseUploadedPreview(item, previewUrlsRef.current);
+        }
+      }
+
+      return current.filter((item) => !itemIdSet.has(item.id));
+    });
     setRuns((current) =>
       current.map((run) =>
-        run.outputItemId === itemId ? { ...run, outputItemId: null } : run
+        run.outputItemId && itemIdSet.has(run.outputItemId)
+          ? { ...run, outputItemId: null }
+          : run
       )
+    );
+    setSelectedItemIds((current) =>
+      current.filter((itemId) => !itemIdSet.has(itemId))
     );
   }, []);
 
-  const setItemFolderIds = useCallback((itemId: string, nextFolderIds: string[]) => {
-    setItems((current) =>
-      current.map((item) =>
-        item.id === itemId ? { ...item, folderIds: nextFolderIds } : item
-      )
-    );
-  }, []);
+  const deleteItem = useCallback(
+    (itemId: string) => {
+      deleteItems([itemId]);
+    },
+    [deleteItems]
+  );
+
+  const deleteSelectedItems = useCallback(() => {
+    deleteItems(selectedItemIds);
+  }, [deleteItems, selectedItemIds]);
 
   const uploadFiles = useCallback(
     (files: File[]) => {
       if (files.length === 0) return;
 
-      const nextItems = files.map((file) => {
-        const fileType = file.type.toLowerCase();
-        const itemId = createId("asset");
-        const itemKind =
-          fileType.startsWith("image/")
-            ? "image"
-            : fileType.startsWith("video/")
-              ? "video"
-              : "file";
-        const previewUrl =
-          itemKind === "image" || itemKind === "video"
-            ? URL.createObjectURL(file)
-            : null;
+      const nextItems = files.map((file) => createUploadedItem(file, selectedFolderId));
 
-        if (previewUrl) {
-          uploadUrlsRef.current.set(itemId, previewUrl);
+      for (const item of nextItems) {
+        if (item.previewUrl) {
+          previewUrlsRef.current.set(item.id, item.previewUrl);
         }
-
-        return {
-          id: itemId,
-          title: file.name,
-          kind: itemKind,
-          source: "uploaded" as const,
-          previewUrl,
-          contentText: null,
-          createdAt: new Date().toISOString(),
-          modelId: null,
-          prompt: "",
-          meta: `${file.type || "File"} • ${(file.size / 1024 / 1024).toFixed(1)} MB`,
-          folderIds: selectedFolderId ? [selectedFolderId] : [],
-        } satisfies LibraryItem;
-      });
+      }
 
       setItems((current) => [...nextItems, ...current]);
     },
@@ -347,12 +486,40 @@ export function useStudioApp() {
     setSettingsOpen(false);
   }, []);
 
+  const openCreateTextComposer = useCallback(() => {
+    setCreateTextTitle("");
+    setCreateTextBody("");
+    setCreateTextDialogOpen(true);
+  }, []);
+
+  const closeCreateTextComposer = useCallback(() => {
+    setCreateTextDialogOpen(false);
+    setCreateTextTitle("");
+    setCreateTextBody("");
+  }, []);
+
+  const createTextAsset = useCallback(() => {
+    if (!createTextBody.trim()) {
+      return;
+    }
+
+    const nextItem = createTextItem({
+      title: createTextTitle,
+      body: createTextBody,
+      folderId: selectedFolderId,
+    });
+
+    setItems((current) => [nextItem, ...current]);
+    closeCreateTextComposer();
+  }, [closeCreateTextComposer, createTextBody, createTextTitle, selectedFolderId]);
+
   const generate = useCallback(() => {
-    if (!currentDraft.prompt.trim() || !hasFalKey) return;
+    if (!currentDraft.prompt.trim() || !hasFalKey) {
+      return;
+    }
 
     const createdAt = new Date().toISOString();
     const runId = createId("run");
-    const folderIds = selectedFolderId ? [selectedFolderId] : [];
     const run: GenerationRun = {
       id: runId,
       modelId: selectedModel.id,
@@ -373,10 +540,11 @@ export function useStudioApp() {
         model: selectedModel,
         draft: currentDraft,
         createdAt,
-        folderIds,
+        folderId: selectedFolderId,
       });
 
       pendingTimersRef.current = removeTimer(pendingTimersRef.current, timeoutId);
+
       setItems((current) => [nextItem, ...current]);
       setRuns((current) =>
         current.map((entry) =>
@@ -391,46 +559,61 @@ export function useStudioApp() {
   }, [currentDraft, hasFalKey, selectedFolderId, selectedModel]);
 
   return {
-    allCount,
+    addReferences,
+    clearSelection,
+    createTextAsset,
+    createTextBody,
+    createTextDialogOpen,
+    createTextTitle,
     currentDraft,
     deleteFolder,
     deleteItem,
-    filteredItems,
+    deleteSelectedItems,
     folderCounts,
+    folderEditorError,
     folderEditorMode,
     folderEditorOpen,
-    folderEditorTargetId,
     folderEditorValue,
     folders,
+    gallerySizeLevel,
     generate,
-    gridDensity,
     hasFalKey,
     items,
     modelSections: MODEL_SECTIONS,
     models,
+    moveItemsToFolder,
     openCreateFolder,
+    openCreateTextComposer,
     openRenameFolder,
+    pendingRuns,
     removeReference,
     reuseItem,
     reuseRun,
-    runs,
     saveFolder,
     saveSettings,
     selectedFolder,
     selectedFolderId,
+    selectedFolderItems,
+    selectedItemCount,
+    selectedItemIdSet,
     selectedModel,
     selectedModelId,
+    selectionModeEnabled,
+    setCreateTextBody,
+    setCreateTextDialogOpen,
+    setCreateTextTitle,
     setFolderEditorOpen,
     setFolderEditorValue,
-    setGridDensity,
-    setItemFolderIds,
+    setGallerySizeLevel,
     setSelectedFolderId,
     setSelectedModelId,
     setSettingsOpen,
     settings,
     settingsOpen,
+    toggleItemSelection,
+    toggleSelectionMode,
+    ungroupedItems,
     updateDraft,
     uploadFiles,
-    addReferences,
   };
 }

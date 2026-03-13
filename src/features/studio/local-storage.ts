@@ -35,7 +35,7 @@ function writeJson(key: string, value: unknown) {
 
 export function loadStoredGridDensity() {
   const value = readJson<number>(STORAGE_KEYS.gridDensity);
-  return value === 2 || value === 3 || value === 4 ? value : null;
+  return typeof value === "number" && value >= 0 && value <= 6 ? value : null;
 }
 
 export function saveStoredGridDensity(value: number) {

@@ -3,6 +3,7 @@
 import { ModalShell } from "./modal-shell";
 
 interface FolderDialogProps {
+  errorMessage?: string | null;
   open: boolean;
   mode: "create" | "rename";
   value: string;
@@ -12,6 +13,7 @@ interface FolderDialogProps {
 }
 
 export function FolderDialog({
+  errorMessage,
   open,
   mode,
   value,
@@ -45,6 +47,10 @@ export function FolderDialog({
             className="w-full rounded-full border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/60"
           />
         </label>
+
+        {errorMessage ? (
+          <p className="text-sm text-red-300">{errorMessage}</p>
+        ) : null}
 
         <div className="flex items-center justify-end gap-3">
           <button

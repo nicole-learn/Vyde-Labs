@@ -1,36 +1,23 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
+import { CreateTextDialog } from "./create-text-dialog";
 import { FolderDialog } from "./folder-dialog";
-import { GenerationPanel } from "./generation-panel";
-import { LibraryGrid } from "./library-grid";
+import { FloatingControlBar } from "./floating-control-bar";
 import { LocalSettingsDialog } from "./local-settings-dialog";
-import { ModelSidebar } from "./model-sidebar";
 import { FolderSidebar } from "./folder-sidebar";
-import { RecentRunsList } from "./recent-runs-list";
+import { StudioGallery } from "./studio-gallery";
 import { StudioTopBar } from "./studio-top-bar";
+import { StudioWorkspaceShell } from "./studio-workspace-shell";
 import { useStudioApp } from "../use-studio-app";
 
 export function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const studio = useStudioApp();
 
-  const selectedFolderName = useMemo(
-    () => studio.selectedFolder?.name ?? null,
-    [studio.selectedFolder]
-  );
-
   return (
     <>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,#070b12_0%,#0c111a_100%)] text-white">
-        <StudioTopBar
-          hasFalKey={studio.hasFalKey}
-          gridDensity={studio.gridDensity}
-          onGridDensityChange={studio.setGridDensity}
-          onOpenSettings={() => studio.setSettingsOpen(true)}
-          onOpenUpload={() => fileInputRef.current?.click()}
-        />
-
+      <div className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
         <input
           ref={fileInputRef}
           type="file"
@@ -42,53 +29,86 @@ export function StudioPage() {
           }}
         />
 
-        <div className="mx-auto grid max-w-[1700px] gap-5 px-4 py-5 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
-          <div className="lg:sticky lg:top-[112px] lg:self-start">
-            <ModelSidebar
-              models={studio.models}
-              sections={studio.modelSections}
-              selectedModelId={studio.selectedModelId}
-              onSelectModel={studio.setSelectedModelId}
-            />
-          </div>
-
-          <div className="space-y-5">
-            <GenerationPanel
-              draft={studio.currentDraft}
+        <StudioWorkspaceShell
+          topBar={
+            <StudioTopBar
               hasFalKey={studio.hasFalKey}
-              model={studio.selectedModel}
-              onAddReferences={studio.addReferences}
-              onGenerate={studio.generate}
-              onRemoveReference={studio.removeReference}
-              onUpdateDraft={studio.updateDraft}
+              onDeleteSelected={studio.deleteSelectedItems}
+              onOpenCreateText={studio.openCreateTextComposer}
+              onOpenSettings={() => studio.setSettingsOpen(true)}
+              onOpenUpload={() => fileInputRef.current?.click()}
+              onSizeLevelChange={studio.setGallerySizeLevel}
+              onToggleSelectionMode={studio.toggleSelectionMode}
+              selectedItemCount={studio.selectedItemCount}
+              selectionModeEnabled={studio.selectionModeEnabled}
+              sizeLevel={studio.gallerySizeLevel}
             />
-
-            <RecentRunsList runs={studio.runs} onReuseRun={studio.reuseRun} />
-
-            <LibraryGrid
-              density={studio.gridDensity}
-              folders={studio.folders}
-              items={studio.filteredItems}
-              selectedFolderName={selectedFolderName}
-              onDeleteItem={studio.deleteItem}
-              onReuseItem={studio.reuseItem}
-              onSetItemFolderIds={studio.setItemFolderIds}
-            />
-          </div>
-
-          <div className="xl:sticky xl:top-[112px] xl:self-start">
+          }
+          primaryPanel={
+            <div className="relative h-full min-h-0 min-w-0">
+              <StudioGallery
+                allowUngroupDrop={Boolean(studio.selectedFolderId)}
+                emptyStateActionLabel="Upload Assets"
+                emptyStateLabel="Generate or Upload an asset to get started"
+                items={studio.ungroupedItems}
+                pendingRuns={studio.pendingRuns}
+                selectedItemIdSet={studio.selectedItemIdSet}
+                selectionModeEnabled={studio.selectionModeEnabled}
+                sizeLevel={studio.gallerySizeLevel}
+                onDeleteItem={studio.deleteItem}
+                onEmptyStateAction={() => fileInputRef.current?.click()}
+                onMoveDraggedItems={(itemIds) => studio.moveItemsToFolder(itemIds, null)}
+                onReuseItem={studio.reuseItem}
+                onToggleItemSelection={studio.toggleItemSelection}
+              />
+              <FloatingControlBar
+                draft={studio.currentDraft}
+                hasFalKey={studio.hasFalKey}
+                model={studio.selectedModel}
+                models={studio.models}
+                sections={studio.modelSections}
+                selectedModelId={studio.selectedModelId}
+                onAddReferences={studio.addReferences}
+                onGenerate={studio.generate}
+                onRemoveReference={studio.removeReference}
+                onSelectModel={studio.setSelectedModelId}
+                onUpdateDraft={studio.updateDraft}
+              />
+            </div>
+          }
+          secondaryPanel={
+            studio.selectedFolder ? (
+              <StudioGallery
+                emptyStateActionLabel="Upload Assets"
+                emptyStateLabel="Drag or Upload an asset into this folder to see it here"
+                items={studio.selectedFolderItems}
+                selectedItemIdSet={studio.selectedItemIdSet}
+                selectionModeEnabled={studio.selectionModeEnabled}
+                sizeLevel={studio.gallerySizeLevel}
+                onDeleteItem={studio.deleteItem}
+                onEmptyStateAction={() => fileInputRef.current?.click()}
+                onReuseItem={studio.reuseItem}
+                onToggleItemSelection={studio.toggleItemSelection}
+              />
+            ) : null
+          }
+          rightSidebar={
             <FolderSidebar
-              allCount={studio.allCount}
               folders={studio.folders}
               folderCounts={studio.folderCounts}
+              selectedFolderCount={studio.selectedFolderItems.length}
               selectedFolderId={studio.selectedFolderId}
+              ungroupedCount={studio.ungroupedItems.length + studio.pendingRuns.length}
               onCreateFolder={studio.openCreateFolder}
               onDeleteFolder={studio.deleteFolder}
+              onDropItemsToFolder={(itemIds, folderId) =>
+                studio.moveItemsToFolder(itemIds, folderId)
+              }
               onRenameFolder={studio.openRenameFolder}
               onSelectFolder={studio.setSelectedFolderId}
             />
-          </div>
-        </div>
+          }
+        />
       </div>
 
       <LocalSettingsDialog
@@ -99,12 +119,23 @@ export function StudioPage() {
       />
 
       <FolderDialog
+        errorMessage={studio.folderEditorError}
         open={studio.folderEditorOpen}
         mode={studio.folderEditorMode}
         value={studio.folderEditorValue}
         onValueChange={studio.setFolderEditorValue}
         onClose={() => studio.setFolderEditorOpen(false)}
         onSave={studio.saveFolder}
+      />
+
+      <CreateTextDialog
+        open={studio.createTextDialogOpen}
+        title={studio.createTextTitle}
+        body={studio.createTextBody}
+        onTitleChange={studio.setCreateTextTitle}
+        onBodyChange={studio.setCreateTextBody}
+        onClose={() => studio.setCreateTextDialogOpen(false)}
+        onSubmit={studio.createTextAsset}
       />
     </>
   );
