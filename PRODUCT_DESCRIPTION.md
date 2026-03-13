@@ -1,0 +1,235 @@
+# Vyde Labs Product Description
+
+## Overview
+
+Vyde Labs is a Fal-powered AI creation studio built around one idea:
+
+AI tools should feel usable, organized, and consistent the moment you open them.
+
+Instead of splitting text, image, and video creation across disconnected tools, Vyde Labs brings them into a single workspace with one shared interface. You choose a model, enter a prompt, add references when needed, run the generation, and keep what you create organized in folders.
+
+Vyde Labs is available in two forms:
+
+- an open-source local version for people who want to run everything on their own machine with their own Fal API key
+- a hosted version for people who want a managed experience with simple credit-based billing
+
+Both versions are built around the same studio experience. The difference is how access, billing, and key management work.
+
+## The Core Experience
+
+At its heart, Vyde Labs is a focused AI studio.
+
+The product is designed around a few core actions:
+
+- choosing a model
+- writing or refining a prompt
+- uploading references when a model supports them
+- generating text, images, or video
+- reviewing previous runs
+- organizing outputs into folders
+
+The experience is intentionally direct. Vyde Labs is not a workflow builder and it is not trying to turn simple generation into a multi-step automation diagram. The point is to reduce friction between an idea and an output.
+
+When a user opens Vyde Labs, they enter a single workspace. From there, everything important is visible:
+
+- the model they are working with
+- the controls relevant to that model
+- their recent runs
+- the outputs they want to keep
+- the folders that organize the work
+
+This is what makes the product feel clean. The studio is designed to stay centered on creation, not on setup overhead.
+
+## Text, Image, and Video In One Place
+
+Vyde Labs supports three core types of creation:
+
+- LLM-based text generation
+- image generation
+- video generation
+
+All of them live inside the same studio instead of being treated like separate products.
+
+For users, that means the mental model stays the same:
+
+- pick what you want to make
+- choose the model that fits the job
+- enter your instructions
+- generate
+- save and organize what matters
+
+This consistency matters more than it sounds. Many AI tools force users to relearn the interface every time they switch tasks. Vyde Labs is designed so the product feels familiar whether you are asking for text, creating still images, or generating motion.
+
+## Why Folders Are A Core Feature
+
+Folders are one of the most important parts of Vyde Labs.
+
+People do not create just one output. They generate variations, references, drafts, alternates, and final picks. Without organization, even a great model interface becomes unusable after enough activity.
+
+Vyde Labs treats folders as part of the core product, not as a secondary storage feature.
+
+Folders make it possible to:
+
+- organize outputs by project, campaign, or client
+- keep different creative directions separate
+- collect variations from the same prompt or concept
+- save references and results side by side
+- build a workspace that stays readable over time
+
+This is especially important for users who generate often. A good AI tool should not only help users create. It should help them keep creating without turning their library into chaos.
+
+## Open Source / Local Vyde Labs
+
+The open-source version of Vyde Labs is designed for users who want full control.
+
+This version runs locally on a user's own machine. The user brings their own Fal API key, enters it through the in-app settings screen, and uses the same studio interface without needing a cloud deployment or managed account.
+
+### How the local version works
+
+In the local version:
+
+- the user installs and runs Vyde Labs on their own computer
+- the user enters their Fal API key inside the app
+- generations are made using the user's own Fal account
+- files, history, and folders stay local
+- there is no billing layer inside Vyde Labs itself
+
+This makes the local version ideal for users who want privacy, direct provider billing, or a self-run setup.
+
+### What the local version feels like
+
+The local version is meant to feel immediate.
+
+A user should be able to:
+
+1. launch the app
+2. open settings
+3. paste in a Fal key
+4. start generating
+
+There should be no need to provision cloud infrastructure, create database tables, or configure third-party deployment services just to use the product.
+
+### Who the local version is for
+
+The local version is a strong fit for:
+
+- creators who want direct control
+- developers who want to inspect or adapt the product
+- users who prefer local-first tools
+- people who want to pay Fal directly under their own account
+
+## Hosted Vyde Labs
+
+The hosted version is designed for users who want the same product with less setup.
+
+In the hosted version, Vyde Labs manages the provider key and infrastructure. A user signs in, buys credits, and starts creating immediately. The UI remains the same studio experience, with one important addition: a profile button in the top-right corner that provides access to account information, credits, and billing.
+
+### How the hosted version works
+
+In the hosted version:
+
+- users sign in to a Vyde Labs account
+- Vyde Labs manages the Fal integration behind the scenes
+- users do not provide their own API key
+- generations are billed through credits
+- outputs, history, and folders live in the user's hosted workspace
+
+This keeps the hosted version simple. Users get the benefit of the same creative interface without needing to think about provider credentials.
+
+### Hosted billing
+
+Hosted billing is intentionally straightforward.
+
+The model is:
+
+- no subscriptions
+- no monthly plan logic
+- no usage bundles tied to account tiers
+- credits sold in packs of 100 only
+
+Hosted pricing is based on Fal market cost with a 25% platform markup.
+
+That means users can understand the hosted experience in plain terms:
+
+- buy credits
+- use the studio
+- spend credits as you generate
+
+The goal is to keep the pricing model predictable instead of mixing subscriptions, provider bills, and multiple pricing systems.
+
+### Why some users will prefer hosted
+
+The hosted version is best for users who want:
+
+- the fastest possible onboarding
+- a managed account instead of self-supplied API keys
+- simple credit-based billing
+- the same interface without local setup responsibilities
+
+## LLMs As A Core Offering
+
+LLMs are not an optional extra inside Vyde Labs. They are part of the core product.
+
+That matters because many creative workflows begin with language:
+
+- brainstorming directions
+- rewriting ideas
+- generating scripts
+- refining prompt language
+- developing creative briefs
+
+In Vyde Labs, LLM access belongs in the same space as image and video generation. Users should not have to leave the product to move from language to visuals or from visuals back to language.
+
+For users, the important thing is simple:
+
+- text, image, and video live together
+- the interface stays consistent
+- the workspace stays organized in one place
+
+## What Makes Vyde Labs Different
+
+Vyde Labs is not trying to compete by being the most complicated AI platform.
+
+Its value comes from restraint.
+
+The product is defined by:
+
+- one workspace
+- one shared studio
+- a folder-first organization system
+- a Fal-powered model layer
+- a clean split between local and hosted use
+
+The product does not ask users to learn a workflow language before they can get value from it. It does not bury the creative experience under automation concepts. It keeps the center of gravity on generation, iteration, and organization.
+
+## Local Vs Hosted At A Glance
+
+### Open Source / Local
+
+- you run it yourself
+- you add your own Fal API key
+- you pay Fal directly
+- your files, folders, and history stay local
+- no hosted billing layer
+
+### Hosted
+
+- Vyde Labs manages the provider access
+- you sign in with a Vyde Labs account
+- you buy 100-credit packs
+- usage is charged at Fal market cost plus 25%
+- your workspace is managed for you
+
+## The User Promise
+
+Vyde Labs should feel simple from the first session and stay usable after the hundredth.
+
+That means:
+
+- fast access to strong models
+- one consistent interface
+- folders that actually matter
+- no unnecessary workflow complexity
+- a clear choice between local control and hosted convenience
+
+In practical terms, Vyde Labs is a product for people who want to make things with AI and keep their work organized without fighting the tool itself.
