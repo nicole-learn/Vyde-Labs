@@ -433,6 +433,17 @@ function AssetTile({
         }
         onOpenItem(item.id);
       }}
+      onDragStartCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (!target || target === event.currentTarget) {
+          return;
+        }
+
+        if (target.closest("img, video")) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onDragStart={(event) => {
         if (dragImageRef?.current) {
           event.dataTransfer.setDragImage(dragImageRef.current, 0, 0);
@@ -474,17 +485,18 @@ function AssetTile({
 
       {item.kind === "audio" ? (
         <div className="relative size-full overflow-hidden bg-[linear-gradient(180deg,rgba(9,18,28,0.96),rgba(8,20,34,0.84))]">
-          {thumbnailUrl ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={thumbnailUrl}
-                alt={item.title}
-                className="size-full object-cover"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.18)_58%,rgba(0,0,0,0.08)_100%)]" />
-            </>
-          ) : null}
+              {thumbnailUrl ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={thumbnailUrl}
+                    alt={item.title}
+                    className="pointer-events-none size-full object-cover"
+                    draggable={false}
+                  />
+                  <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.66)_0%,rgba(0,0,0,0.18)_58%,rgba(0,0,0,0.08)_100%)]" />
+                </>
+              ) : null}
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="rounded-full bg-black/48 p-2 text-white shadow-xl backdrop-blur-sm">
               <AudioLines className="size-4" />
@@ -509,7 +521,8 @@ function AssetTile({
           <img
             src={thumbnailUrl}
             alt={item.title}
-            className="size-full object-cover"
+            className="pointer-events-none size-full object-cover"
+            draggable={false}
           />
         </div>
       ) : previewMediaKind === "video" && item.previewUrl ? (
@@ -519,7 +532,8 @@ function AssetTile({
             muted
             playsInline
             preload="metadata"
-            className="size-full object-cover"
+            draggable={false}
+            className="pointer-events-none size-full object-cover"
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="rounded-full bg-black/45 p-1.5 backdrop-blur-sm">
