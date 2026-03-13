@@ -8,6 +8,7 @@ import { FolderDialog } from "./folder-dialog";
 import { FolderSidebar } from "./folder-sidebar";
 import { HostedAccountDialog } from "./hosted-account-dialog";
 import { ProviderSettingsDialog } from "./provider-settings-dialog";
+import { StudioDevModeOverlay } from "./studio-dev-mode-overlay";
 import { StudioDragPreviewOverlay } from "./studio-drag-preview-overlay";
 import { StudioGallery } from "./studio-gallery";
 import { StudioMobileRail } from "./studio-mobile-rail";
@@ -19,6 +20,10 @@ import { useStudioRuntime } from "../use-studio-runtime";
 import type { LibraryItem } from "../types";
 
 const XL_BREAKPOINT_QUERY = "(min-width: 1280px)";
+
+interface StudioPageProps {
+  hideDevModeToggle?: boolean;
+}
 
 function getDownloadFileName(item: LibraryItem) {
   const safeBaseName = item.title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || "asset";
@@ -38,7 +43,9 @@ function getDownloadFileName(item: LibraryItem) {
   return safeBaseName;
 }
 
-export function StudioPage() {
+export function StudioPage({
+  hideDevModeToggle = false,
+}: StudioPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const emptyDragImageRef = useRef<HTMLDivElement | null>(null);
   const { appMode, canSwitchModes, setAppMode } = useStudioAppMode();
@@ -134,6 +141,7 @@ export function StudioPage() {
     setHostedAccountOpen(false);
     setAppMode(nextMode);
   };
+  const showDevModeToggle = canSwitchModes && !hideDevModeToggle;
 
   const openAccountSurface = () => {
     if (appMode === "hosted") {
@@ -323,13 +331,11 @@ export function StudioPage() {
         topBar={
           <StudioTopBar
             appMode={appMode}
-            canSwitchModes={canSwitchModes}
             hasFalKey={studio.hasFalKey}
             onDeleteSelected={studio.deleteSelectedItems}
             onOpenCreateText={studio.openCreateTextComposer}
             onOpenAccount={openAccountSurface}
             onOpenUpload={() => fileInputRef.current?.click()}
-            onAppModeChange={handleAppModeChange}
             onSizeLevelChange={studio.setGallerySizeLevel}
             onToggleSelectionMode={studio.toggleSelectionMode}
             selectedItemCount={studio.selectedItemCount}
@@ -340,6 +346,12 @@ export function StudioPage() {
       />
 
       <StudioDragPreviewOverlay preview={dragPreview} />
+      {showDevModeToggle ? (
+        <StudioDevModeOverlay
+          appMode={appMode}
+          onChange={handleAppModeChange}
+        />
+      ) : null}
 
       {appMode === "local" ? (
         <ProviderSettingsDialog

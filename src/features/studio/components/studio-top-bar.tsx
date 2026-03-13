@@ -6,17 +6,14 @@ import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/cn";
 import type { StudioAppMode } from "../studio-app-mode";
 import { StudioAccountButton } from "./studio-account-button";
-import { StudioDevModeSwitcher } from "./studio-dev-mode-switcher";
 
 interface StudioTopBarProps {
   appMode: StudioAppMode;
-  canSwitchModes: boolean;
   hasFalKey: boolean;
   onDeleteSelected: () => void;
   onOpenCreateText: () => void;
   onOpenAccount: () => void;
   onOpenUpload: () => void;
-  onAppModeChange: (appMode: StudioAppMode) => void;
   onToggleSelectionMode: () => void;
   selectedItemCount: number;
   selectionModeEnabled: boolean;
@@ -55,13 +52,11 @@ function ActionPillButton({
 
 export function StudioTopBar({
   appMode,
-  canSwitchModes,
   hasFalKey,
   onDeleteSelected,
   onOpenCreateText,
   onOpenAccount,
   onOpenUpload,
-  onAppModeChange,
   onToggleSelectionMode,
   selectedItemCount,
   selectionModeEnabled,
@@ -73,11 +68,7 @@ export function StudioTopBar({
 
   return (
     <header className="flex h-full items-center gap-3 border-b border-white/8 bg-black px-3">
-      <div className="min-w-0 flex-1">
-        {canSwitchModes ? (
-          <StudioDevModeSwitcher appMode={appMode} onChange={onAppModeChange} />
-        ) : null}
-      </div>
+      <div className="min-w-0 flex-1" />
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ActionPillButton
