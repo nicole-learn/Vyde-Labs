@@ -1,6 +1,16 @@
 "use client";
 
-import { AlertTriangle, Copy, Loader2, Play, Slash, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Clock3,
+  Copy,
+  Loader2,
+  Play,
+  Slash,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
@@ -61,6 +71,100 @@ type GalleryDisplayItem =
 
 const ROW_HEIGHTS = [360, 320, 280, 240, 210, 180, 150];
 const TILE_GAP_PX = 3;
+
+interface CardStatusVisual {
+  badgeClassName: string;
+  icon: LucideIcon;
+  label: string;
+}
+
+function getRunCardSurfaceClassName(kind: GenerationRun["kind"]) {
+  if (kind === "video") {
+    return "bg-[linear-gradient(180deg,#08111f_0%,#091b32_52%,#061323_100%)]";
+  }
+
+  if (kind === "text") {
+    return "bg-[linear-gradient(180deg,#0e1022_0%,#111933_54%,#0a1020_100%)]";
+  }
+
+  return "bg-[linear-gradient(180deg,#07131f_0%,#092236_52%,#071725_100%)]";
+}
+
+function getRunStatusVisual(status: GenerationRun["status"]): CardStatusVisual {
+  if (status === "processing") {
+    return {
+      badgeClassName: "border-primary/30 bg-primary/14 text-primary-foreground/94",
+      icon: Loader2,
+      label: "Generating",
+    };
+  }
+
+  if (status === "queued" || status === "pending") {
+    return {
+      badgeClassName: "border-white/14 bg-white/[0.08] text-white/84",
+      icon: Clock3,
+      label: "In Queue",
+    };
+  }
+
+  if (status === "cancelled") {
+    return {
+      badgeClassName: "border-amber-400/22 bg-amber-500/12 text-amber-100",
+      icon: Slash,
+      label: "Cancelled",
+    };
+  }
+
+  return {
+    badgeClassName: "border-red-400/24 bg-red-500/12 text-red-100",
+    icon: AlertTriangle,
+    label: "Failed",
+  };
+}
+
+function getAssetStatusVisual(item: LibraryItem): CardStatusVisual | null {
+  if (item.source !== "generated") {
+    return null;
+  }
+
+  if (item.kind === "text") {
+    return {
+      badgeClassName: "border-black/12 bg-black/[0.06] text-black/72",
+      icon: Check,
+      label: "Done",
+    };
+  }
+
+  return {
+    badgeClassName: "border-white/14 bg-black/30 text-white/88",
+    icon: Check,
+    label: "Done",
+  };
+}
+
+function StatusBadge({
+  className,
+  icon: Icon,
+  label,
+  spinning = false,
+}: {
+  className: string;
+  icon: LucideIcon;
+  label: string;
+  spinning?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] backdrop-blur-sm",
+        className
+      )}
+    >
+      <Icon className={cn("size-3", spinning ? "animate-spin" : undefined)} />
+      {label}
+    </span>
+  );
+}
 
 function buildRows(items: GalleryDisplayItem[], containerWidth: number, sizeLevel: number) {
   if (containerWidth <= 0 || items.length === 0) {
@@ -155,69 +259,35 @@ function AssetTile({
   onToggleItemSelection: (itemId: string) => void;
 }) {
   if (displayItem.type === "run") {
-    const statusTone =
-      displayItem.run.status === "failed"
-        ? "border-red-400/28 bg-red-500/16 text-red-50"
-        : displayItem.run.status === "cancelled"
-          ? "border-amber-400/28 bg-amber-500/14 text-amber-50"
-          : "border-white/28 bg-black/30 text-white/90";
-    const statusLabel =
-      displayItem.run.status === "processing"
-        ? "Generating"
-        : displayItem.run.status === "queued"
-          ? "Queued"
-          : displayItem.run.status === "pending"
-            ? "Pending"
-            : displayItem.run.status === "cancelled"
-              ? "Cancelled"
-              : "Failed";
+    const statusVisual = getRunStatusVisual(displayItem.run.status);
 
     return (
       <div
-        className="relative h-full w-full overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800"
+        className={cn(
+          "relative h-full w-full overflow-hidden",
+          getRunCardSurfaceClassName(displayItem.run.kind)
+        )}
         aria-label={displayItem.run.prompt}
       >
-        {displayItem.run.previewUrl ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displayItem.run.previewUrl}
-              alt={displayItem.run.prompt}
-              className="absolute inset-0 size-full object-cover opacity-40"
-            />
-            <span className="pointer-events-none absolute inset-0 bg-black/42" />
-          </>
-        ) : null}
-        <span className="pointer-events-none absolute -top-9 -left-9 h-28 w-28 rounded-full bg-cyan-300/25 blur-2xl" />
-        <span className="pointer-events-none absolute -right-10 -bottom-10 h-32 w-32 rounded-full bg-sky-500/20 blur-3xl" />
-        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0.32)_46%,rgba(0,0,0,0.16)_100%)]" />
+        <span className="pointer-events-none absolute -top-8 left-4 h-24 w-24 rounded-full bg-primary/18 blur-3xl" />
+        <span className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-white/[0.05] blur-3xl" />
+        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.54)_0%,rgba(0,0,0,0.28)_42%,rgba(0,0,0,0.12)_100%)]" />
 
-        <div className="relative z-10 flex h-full flex-col p-2.5 text-white">
-          <span
-            className={cn(
-              "inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] backdrop-blur-sm",
-              statusTone
-            )}
-          >
-            {displayItem.run.status === "failed" ? (
-              <AlertTriangle className="size-3" />
-            ) : displayItem.run.status === "cancelled" ? (
-              <Slash className="size-3" />
-            ) : (
-              <Loader2
-                className={cn(
-                  "size-3",
-                  displayItem.run.status === "processing" ? "animate-spin" : undefined
-                )}
-              />
-            )}
-            {statusLabel}
-          </span>
+        <div className="relative z-10 flex h-full flex-col justify-between p-3 text-white">
+          <div>
+            <StatusBadge
+              className={statusVisual.badgeClassName}
+              icon={statusVisual.icon}
+              label={statusVisual.label}
+              spinning={displayItem.run.status === "processing"}
+            />
+          </div>
+
           <div className="mt-auto">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/72">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/62">
               {displayItem.run.modelName}
             </p>
-            <p className="mt-1 line-clamp-3 text-sm leading-5 text-white">
+            <p className="mt-1 line-clamp-3 text-[15px] leading-5 text-white">
               {displayItem.run.prompt}
             </p>
             {displayItem.run.errorMessage ? (
@@ -226,7 +296,7 @@ function AssetTile({
               </p>
             ) : null}
             {typeof displayItem.run.progressPercent === "number" ? (
-              <div className="mt-3">
+              <div className="mt-3 space-y-1.5">
                 <div className="h-1.5 overflow-hidden rounded-full bg-white/14">
                   <div
                     className={cn(
@@ -243,6 +313,9 @@ function AssetTile({
                     }}
                   />
                 </div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-white/48">
+                  {displayItem.run.progressPercent}% complete
+                </p>
               </div>
             ) : null}
           </div>
@@ -253,6 +326,7 @@ function AssetTile({
 
   const { item } = displayItem;
   const previewMediaKind = getLibraryItemPreviewMediaKind(item);
+  const assetStatusVisual = getAssetStatusVisual(item);
 
   return (
     <div
@@ -305,6 +379,16 @@ function AssetTile({
       )}
       aria-label={item.prompt || item.title}
     >
+      {assetStatusVisual ? (
+        <div className="pointer-events-none absolute left-3 top-3 z-20">
+          <StatusBadge
+            className={assetStatusVisual.badgeClassName}
+            icon={assetStatusVisual.icon}
+            label={assetStatusVisual.label}
+          />
+        </div>
+      ) : null}
+
       {previewMediaKind === "image" && item.previewUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -328,12 +412,12 @@ function AssetTile({
           </div>
         </div>
       ) : item.kind === "text" ? (
-        <div className="flex size-full flex-col p-4">
+        <div className="flex size-full flex-col p-4 pt-12">
           <p className="line-clamp-8 text-sm leading-6 text-black/82">
             {item.contentText || item.prompt || item.title}
           </p>
           <div className="mt-auto pt-4 text-[11px] uppercase tracking-[0.16em] text-black/52">
-            {item.source}
+            {item.source === "generated" ? item.meta : item.source}
           </div>
         </div>
       ) : (
