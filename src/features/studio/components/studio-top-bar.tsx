@@ -60,24 +60,27 @@ export function StudioTopBar({
   onSizeLevelChange,
 }: StudioTopBarProps) {
   const sliderProgressPct = (sizeLevel / 6) * 100;
+  const selectionLabel =
+    selectedItemCount > 0 ? `Delete ${selectedItemCount}` : "Selection Mode";
 
   return (
     <header className="flex h-full items-center gap-3 border-b border-white/8 bg-black px-3">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {selectedItemCount > 0 ? (
-          <ActionPillButton ariaLabel="Delete selected" onClick={onDeleteSelected}>
-            <Trash2 className="size-3.5 text-red-300" />
-            <span className="text-red-200">Delete {selectedItemCount}</span>
-          </ActionPillButton>
-        ) : null}
+      <div className="min-w-0 flex-1" />
 
+      <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ActionPillButton
-          active={selectionModeEnabled}
-          ariaLabel="Selection mode"
-          onClick={onToggleSelectionMode}
+          active={selectedItemCount === 0 && selectionModeEnabled}
+          ariaLabel={selectedItemCount > 0 ? "Delete selected" : "Selection mode"}
+          onClick={selectedItemCount > 0 ? onDeleteSelected : onToggleSelectionMode}
         >
-          <SquareMousePointer className="size-3.5" />
-          <span>Selection Mode</span>
+          {selectedItemCount > 0 ? (
+            <Trash2 className="size-3.5 text-red-300" />
+          ) : (
+            <SquareMousePointer className="size-3.5" />
+          )}
+          <span className={selectedItemCount > 0 ? "text-red-200" : undefined}>
+            {selectionLabel}
+          </span>
         </ActionPillButton>
 
         <ActionPillButton ariaLabel="Add prompt" onClick={onOpenCreateText}>
@@ -89,9 +92,6 @@ export function StudioTopBar({
           <Upload className="size-3.5" />
           <span>Upload Files</span>
         </ActionPillButton>
-      </div>
-
-      <div className="ml-auto flex shrink-0 items-center gap-2.5">
         <input
           type="range"
           min={0}
