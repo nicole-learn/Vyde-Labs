@@ -234,13 +234,20 @@ function useMeasuredWidth() {
     const container = containerRef.current;
     if (!container) return;
 
+    const measureContentWidth = () => {
+      const styles = window.getComputedStyle(container);
+      const paddingLeft = Number.parseFloat(styles.paddingLeft) || 0;
+      const paddingRight = Number.parseFloat(styles.paddingRight) || 0;
+      return Math.max(container.clientWidth - paddingLeft - paddingRight, 0);
+    };
+
     const observer = new ResizeObserver((entries) => {
-      const nextWidth = entries[0]?.contentRect.width ?? 0;
+      const nextWidth = entries[0]?.contentRect.width ?? measureContentWidth();
       setWidth(nextWidth);
     });
 
     observer.observe(container);
-    setWidth(container.getBoundingClientRect().width);
+    setWidth(measureContentWidth());
 
     return () => observer.disconnect();
   }, []);
@@ -578,7 +585,7 @@ export function StudioGallery({
   }, [items, runCards]);
 
   const rows = useMemo(
-    () => buildRows(galleryItems, Math.max(width - GALLERY_EDGE_INSET_PX * 2, 0), sizeLevel),
+    () => buildRows(galleryItems, Math.max(width, 0), sizeLevel),
     [galleryItems, sizeLevel, width]
   );
 
