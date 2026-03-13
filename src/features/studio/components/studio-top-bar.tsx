@@ -3,14 +3,19 @@
 import type { ReactNode } from "react";
 import { FileText, SquareMousePointer, Trash2, Upload } from "lucide-react";
 import { cn } from "@/lib/cn";
+import type { StudioAppMode } from "../studio-app-mode";
 import { StudioAccountButton } from "./studio-account-button";
+import { StudioDevModeSwitcher } from "./studio-dev-mode-switcher";
 
 interface StudioTopBarProps {
+  appMode: StudioAppMode;
+  canSwitchModes: boolean;
   hasFalKey: boolean;
   onDeleteSelected: () => void;
   onOpenCreateText: () => void;
-  onOpenSettings: () => void;
+  onOpenAccount: () => void;
   onOpenUpload: () => void;
+  onAppModeChange: (appMode: StudioAppMode) => void;
   onToggleSelectionMode: () => void;
   selectedItemCount: number;
   selectionModeEnabled: boolean;
@@ -48,11 +53,14 @@ function ActionPillButton({
 }
 
 export function StudioTopBar({
+  appMode,
+  canSwitchModes,
   hasFalKey,
   onDeleteSelected,
   onOpenCreateText,
-  onOpenSettings,
+  onOpenAccount,
   onOpenUpload,
+  onAppModeChange,
   onToggleSelectionMode,
   selectedItemCount,
   selectionModeEnabled,
@@ -65,7 +73,11 @@ export function StudioTopBar({
 
   return (
     <header className="flex h-full items-center gap-3 border-b border-white/8 bg-black px-3">
-      <div className="min-w-0 flex-1" />
+      <div className="min-w-0 flex-1">
+        {canSwitchModes ? (
+          <StudioDevModeSwitcher appMode={appMode} onChange={onAppModeChange} />
+        ) : null}
+      </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <ActionPillButton
@@ -105,7 +117,11 @@ export function StudioTopBar({
             background: `linear-gradient(90deg, color-mix(in srgb, var(--primary) 90%, white 10%) 0%, color-mix(in srgb, var(--primary) 90%, white 10%) ${sliderProgressPct}%, rgba(255,255,255,0.12) ${sliderProgressPct}%, rgba(255,255,255,0.12) 100%)`,
           }}
         />
-        <StudioAccountButton hasFalKey={hasFalKey} onClick={onOpenSettings} />
+        <StudioAccountButton
+          appMode={appMode}
+          hasFalKey={hasFalKey}
+          onClick={onOpenAccount}
+        />
       </div>
     </header>
   );

@@ -3,10 +3,12 @@
 import { FileText, FolderPlus, SquareMousePointer, Upload } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import type { StudioAppMode } from "../studio-app-mode";
 import type { StudioFolder } from "../types";
 import { StudioAccountButton } from "./studio-account-button";
 
 interface StudioMobileRailProps {
+  appMode: StudioAppMode;
   folderCounts: Record<string, number>;
   folders: StudioFolder[];
   hasFalKey: boolean;
@@ -15,7 +17,7 @@ interface StudioMobileRailProps {
   sizeLevel: number;
   onCreateFolder: () => void;
   onOpenCreateText: () => void;
-  onOpenSettings: () => void;
+  onOpenAccount: () => void;
   onOpenUpload: () => void;
   onSelectFolder: (folderId: string | null) => void;
   onSizeLevelChange: (value: number) => void;
@@ -52,6 +54,7 @@ function RailButton({
 }
 
 export function StudioMobileRail({
+  appMode,
   folderCounts,
   folders,
   hasFalKey,
@@ -60,7 +63,7 @@ export function StudioMobileRail({
   sizeLevel,
   onCreateFolder,
   onOpenCreateText,
-  onOpenSettings,
+  onOpenAccount,
   onOpenUpload,
   onSelectFolder,
   onSizeLevelChange,
@@ -69,7 +72,11 @@ export function StudioMobileRail({
   return (
     <aside className="flex h-full min-h-0 w-[54px] shrink-0 flex-col items-center border-l-[2px] border-border/40 bg-background">
       <div className="flex w-full shrink-0 flex-col items-center px-1.5 pb-1 pt-2">
-        <StudioAccountButton hasFalKey={hasFalKey} onClick={onOpenSettings} />
+        <StudioAccountButton
+          appMode={appMode}
+          hasFalKey={hasFalKey}
+          onClick={onOpenAccount}
+        />
       </div>
 
       <div className="stable-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 pb-2 pt-1">

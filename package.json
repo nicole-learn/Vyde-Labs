@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:local": "next dev",
+    "dev:hosted": "NEXT_PUBLIC_VYDE_APP_MODE=hosted next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

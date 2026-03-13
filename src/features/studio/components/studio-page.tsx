@@ -6,12 +6,14 @@ import { CreateTextDialog } from "./create-text-dialog";
 import { FloatingControlBar } from "./floating-control-bar";
 import { FolderDialog } from "./folder-dialog";
 import { FolderSidebar } from "./folder-sidebar";
+import { HostedAccountDialog } from "./hosted-account-dialog";
 import { ProviderSettingsDialog } from "./provider-settings-dialog";
 import { StudioGallery } from "./studio-gallery";
 import { StudioMobileRail } from "./studio-mobile-rail";
 import { StudioTopBar } from "./studio-top-bar";
 import { StudioWorkspaceShell } from "./studio-workspace-shell";
-import { useStudioLocalRuntime } from "../use-studio-local-runtime";
+import { useStudioAppMode } from "../studio-app-mode";
+import { useStudioRuntime } from "../use-studio-runtime";
 import type { LibraryItem } from "../types";
 
 const XL_BREAKPOINT_QUERY = "(min-width: 1280px)";
@@ -36,12 +38,14 @@ function getDownloadFileName(item: LibraryItem) {
 
 export function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const studio = useStudioLocalRuntime();
+  const { appMode, canSwitchModes, setAppMode } = useStudioAppMode();
+  const studio = useStudioRuntime(appMode);
   const [isDesktopViewport, setIsDesktopViewport] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.matchMedia(XL_BREAKPOINT_QUERY).matches;
   });
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [hostedAccountOpen, setHostedAccountOpen] = useState(false);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(XL_BREAKPOINT_QUERY);
@@ -58,6 +62,20 @@ export function StudioPage() {
     () => studio.items.find((item) => item.id === activeItemId) ?? null,
     [activeItemId, studio.items]
   );
+
+  const handleAppModeChange = (nextMode: "local" | "hosted") => {
+    setHostedAccountOpen(false);
+    setAppMode(nextMode);
+  };
+
+  const openAccountSurface = () => {
+    if (appMode === "hosted") {
+      setHostedAccountOpen(true);
+      return;
+    }
+
+    studio.setProviderSettingsOpen(true);
+  };
 
   const downloadItem = (item: LibraryItem) => {
     if (typeof window === "undefined") return;
@@ -167,6 +185,7 @@ export function StudioPage() {
         isDesktopViewport={isDesktopViewport}
         mobileRail={
           <StudioMobileRail
+            appMode={appMode}
             folderCounts={studio.folderCounts}
             folders={studio.folders}
             hasFalKey={studio.hasFalKey}
@@ -175,7 +194,7 @@ export function StudioPage() {
             sizeLevel={studio.gallerySizeLevel}
             onCreateFolder={studio.openCreateFolder}
             onOpenCreateText={studio.openCreateTextComposer}
-            onOpenSettings={() => studio.setProviderSettingsOpen(true)}
+            onOpenAccount={openAccountSurface}
             onOpenUpload={() => fileInputRef.current?.click()}
             onSelectFolder={studio.setSelectedFolderId}
             onSizeLevelChange={studio.setGallerySizeLevel}
@@ -199,11 +218,14 @@ export function StudioPage() {
         }
         topBar={
           <StudioTopBar
+            appMode={appMode}
+            canSwitchModes={canSwitchModes}
             hasFalKey={studio.hasFalKey}
             onDeleteSelected={studio.deleteSelectedItems}
             onOpenCreateText={studio.openCreateTextComposer}
-            onOpenSettings={() => studio.setProviderSettingsOpen(true)}
+            onOpenAccount={openAccountSurface}
             onOpenUpload={() => fileInputRef.current?.click()}
+            onAppModeChange={handleAppModeChange}
             onSizeLevelChange={studio.setGallerySizeLevel}
             onToggleSelectionMode={studio.toggleSelectionMode}
             selectedItemCount={studio.selectedItemCount}
@@ -213,11 +235,18 @@ export function StudioPage() {
         }
       />
 
-      <ProviderSettingsDialog
-        open={studio.providerSettingsOpen}
-        initialValues={studio.providerSettings}
-        onClose={() => studio.setProviderSettingsOpen(false)}
-        onSave={studio.saveProviderSettings}
+      {appMode === "local" ? (
+        <ProviderSettingsDialog
+          open={studio.providerSettingsOpen}
+          initialValues={studio.providerSettings}
+          onClose={() => studio.setProviderSettingsOpen(false)}
+          onSave={studio.saveProviderSettings}
+        />
+      ) : null}
+
+      <HostedAccountDialog
+        open={appMode === "hosted" && hostedAccountOpen}
+        onClose={() => setHostedAccountOpen(false)}
       />
 
       <FolderDialog

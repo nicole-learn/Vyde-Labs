@@ -30,6 +30,7 @@ import {
   STUDIO_MODEL_SECTIONS,
   getStudioModelById,
 } from "./studio-model-catalog";
+import type { StudioAppMode } from "./studio-app-mode";
 import type {
   DraftReference,
   GenerationRun,
@@ -38,7 +39,13 @@ import type {
   StudioProviderSettings,
 } from "./types";
 
-export function useStudioLocalRuntime() {
+interface UseStudioLocalRuntimeOptions {
+  appMode?: StudioAppMode;
+}
+
+export function useStudioLocalRuntime(options?: UseStudioLocalRuntimeOptions) {
+  const appMode = options?.appMode ?? "local";
+  const isHostedMode = appMode === "hosted";
   const initialStudioState = useMemo(() => createStudioSeedState(), []);
   const previewUrlsRef = useRef(new Map<string, string>());
   const pendingTimersRef = useRef<number[]>([]);
@@ -466,7 +473,7 @@ export function useStudioLocalRuntime() {
       return;
     }
 
-    if (!hasFalKey) {
+    if (!isHostedMode && !hasFalKey) {
       setProviderSettingsOpen(true);
       return;
     }
@@ -512,7 +519,7 @@ export function useStudioLocalRuntime() {
     }, 900);
 
     pendingTimersRef.current = [...pendingTimersRef.current, timeoutId];
-  }, [currentDraft, hasFalKey, selectedFolderId, selectedModel]);
+  }, [currentDraft, hasFalKey, isHostedMode, selectedFolderId, selectedModel]);
 
   return {
     addReferences,
