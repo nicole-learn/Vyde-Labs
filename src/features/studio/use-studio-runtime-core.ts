@@ -8,6 +8,8 @@ import {
   loadStoredProviderSettings,
   saveStoredProviderSettings,
 } from "./studio-browser-storage";
+import { buildTransferredStudioDraftState } from "./studio-draft-transfer";
+import { normalizeTextReferenceForProvider } from "./studio-text-reference-preparation";
 import {
   canGenerateWithDraft,
 } from "./studio-generation-rules";
@@ -409,9 +411,6 @@ async function queueLocalGenerationRequest(params: {
   formData.set("modelId", params.modelId);
   formData.set("draft", JSON.stringify(params.draft));
   formData.set("inputs", JSON.stringify(params.inputs));
-  if (params.folderId) {
-    formData.set("folderId", params.folderId);
-  }
   for (const [field, file] of params.filesByField.entries()) {
     formData.set(`input-file:${field}`, file);
   }
@@ -562,9 +561,6 @@ async function queueHostedGeneration(params: {
 }) {
   const formData = new FormData();
   formData.set("modelId", params.modelId);
-  if (params.folderId) {
-    formData.set("folderId", params.folderId);
-  }
   formData.set("draft", JSON.stringify(params.draft));
   formData.set("inputs", JSON.stringify(params.inputs));
 
@@ -761,6 +757,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     null
   );
   const [savePromptPending, setSavePromptPending] = useState(false);
+  const [generatePending, setGeneratePending] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadDialogFolderId, setUploadDialogFolderId] = useState<string | null>(
     null
@@ -867,11 +864,23 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
 
   const applyHostedSyncPayload = useCallback(
     (payload: HostedStudioSyncResponse) => {
-      if (payload.kind === "noop") {
-        hostedRevisionRef.current = payload.revision;
+      if (payload.revision < hostedRevisionRef.current) {
         return;
       }
 
+      if (payload.kind === "noop") {
+        hostedRevisionRef.current = Math.max(
+          hostedRevisionRef.current,
+          payload.revision
+        );
+        return;
+      }
+
+      if (payload.revision === hostedRevisionRef.current) {
+        return;
+      }
+
+      hostedRevisionRef.current = payload.revision;
       applyHostedState(payload.state);
       if (payload.kind === "bootstrap") {
         setSelectedModelIdState(payload.uiStateDefaults.selectedModelId);
@@ -956,12 +965,25 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         return false;
       }
 
-      if (params.requestId < localLatestAppliedRequestRef.current) {
+      if (params.revision < localRevisionRef.current) {
         return false;
       }
 
-      localLatestAppliedRequestRef.current = params.requestId;
-      localRevisionRef.current = params.revision;
+      if (
+        params.revision === localRevisionRef.current &&
+        params.requestId <= localLatestAppliedRequestRef.current
+      ) {
+        return false;
+      }
+
+      localLatestAppliedRequestRef.current = Math.max(
+        localLatestAppliedRequestRef.current,
+        params.requestId
+      );
+      localRevisionRef.current = Math.max(
+        localRevisionRef.current,
+        params.revision
+      );
       applySnapshot(nextSnapshot, { preserveDrafts: params.preserveDrafts });
       return true;
     },
@@ -1002,11 +1024,21 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         return false;
       }
 
-      if (params.requestId < hostedLatestAppliedRequestRef.current) {
+      if (nextState.revision < hostedRevisionRef.current) {
         return false;
       }
 
-      hostedLatestAppliedRequestRef.current = params.requestId;
+      if (
+        nextState.revision === hostedRevisionRef.current &&
+        params.requestId <= hostedLatestAppliedRequestRef.current
+      ) {
+        return false;
+      }
+
+      hostedLatestAppliedRequestRef.current = Math.max(
+        hostedLatestAppliedRequestRef.current,
+        params.requestId
+      );
       applyHostedState(nextState);
       return true;
     },
@@ -1502,7 +1534,14 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
           try {
             const payload = JSON.parse(event.data) as LocalStudioSyncResponse;
             if (payload.kind === "noop") {
-              localRevisionRef.current = payload.revision;
+              localRevisionRef.current = Math.max(
+                localRevisionRef.current,
+                payload.revision
+              );
+              return;
+            }
+
+            if (payload.revision <= localRevisionRef.current) {
               return;
             }
 
@@ -1561,6 +1600,17 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     [items]
   );
 
+  const itemBackedRunIds = useMemo(
+    () =>
+      new Set(
+        items.flatMap((item) => {
+          const runId = item.sourceRunId ?? item.runId;
+          return runId ? [runId] : [];
+        })
+      ),
+    [items]
+  );
+
   const selectedFolderItems = useMemo(() => {
     if (!selectedFolderId) {
       return [];
@@ -1575,11 +1625,12 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         (run) =>
           run.folderId === null &&
           run.outputAssetId === null &&
+          !itemBackedRunIds.has(run.id) &&
           (isInFlightStudioRunStatus(run.status) ||
             run.status === "failed" ||
             run.status === "cancelled")
       ),
-    [runs]
+    [itemBackedRunIds, runs]
   );
 
   const selectedFolderRunCards = useMemo(() => {
@@ -1591,11 +1642,12 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       (run) =>
         run.folderId === selectedFolderId &&
         run.outputAssetId === null &&
+        !itemBackedRunIds.has(run.id) &&
         (isInFlightStudioRunStatus(run.status) ||
           run.status === "failed" ||
           run.status === "cancelled")
     );
-  }, [runs, selectedFolderId]);
+  }, [itemBackedRunIds, runs, selectedFolderId]);
 
   const folderCounts = useMemo(
     () => createFolderItemCounts(folders, items, runs),
@@ -2190,6 +2242,18 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     [items]
   );
 
+  const isSupportedReferenceItemForSelectedModel = useCallback(
+    (item: LibraryItem) => {
+      if (!isReferenceEligibleLibraryItem(item)) {
+        return false;
+      }
+
+      const acceptedKinds = selectedModel.acceptedReferenceKinds ?? ["image", "video"];
+      return acceptedKinds.includes(item.kind as "image" | "video" | "audio" | "document");
+    },
+    [selectedModel.acceptedReferenceKinds]
+  );
+
   const setFrameFromLibraryItems = useCallback(
     async (itemIds: string[], slot: "start" | "end") => {
       const droppedItems = getItemsById(itemIds);
@@ -2218,7 +2282,9 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       }
 
       const hasTextItems = droppedItems.some((item) => item.kind === "text");
-      const hasReferenceItems = droppedItems.some(isReferenceEligibleLibraryItem);
+      const hasReferenceItems = droppedItems.some(
+        isSupportedReferenceItemForSelectedModel
+      );
 
       if (hasTextItems && hasReferenceItems) {
         if (
@@ -2261,6 +2327,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     [
       currentDraft.videoInputMode,
       getItemsById,
+      isSupportedReferenceItemForSelectedModel,
       selectedModel.kind,
       selectedModel.supportsFrameInputs,
       selectedModel.supportsReferences,
@@ -2275,7 +2342,9 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       }
 
       const textItems = droppedItems.filter((item) => item.kind === "text");
-      const referenceItems = droppedItems.filter(isReferenceEligibleLibraryItem);
+      const referenceItems = droppedItems.filter(
+        isSupportedReferenceItemForSelectedModel
+      );
       const messages: string[] = [];
 
       if (textItems.length > 0) {
@@ -2339,6 +2408,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       addDraftReferences,
       currentDraft.prompt,
       getItemsById,
+      isSupportedReferenceItemForSelectedModel,
       maxReferenceFiles,
       currentDraft.videoInputMode,
       selectedModel.supportsReferences,
@@ -3174,7 +3244,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     }
   }, [appMode]);
 
-  const buildHostedGenerationPayload = useCallback(() => {
+  const buildHostedGenerationPayload = useCallback(async () => {
     const inputs: HostedStudioGenerateInputDescriptor[] = [];
     const filesByField = new Map<string, File>();
     let nextUploadIndex = 0;
@@ -3187,36 +3257,46 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         return;
       }
 
-      const uploadField =
-        reference.originAssetId === null ? `upload-${nextUploadIndex++}` : null;
+      return normalizeTextReferenceForProvider({
+        model: selectedModel,
+        reference,
+      }).then((normalizedReference) => {
+        const uploadField =
+          normalizedReference.originAssetId === null ? `upload-${nextUploadIndex++}` : null;
 
-      if (uploadField) {
-        filesByField.set(uploadField, reference.file);
-      }
+        if (uploadField) {
+          filesByField.set(uploadField, normalizedReference.file);
+        }
 
-      inputs.push({
-        slot,
-        uploadField,
-        originAssetId: reference.originAssetId,
-        title: reference.title,
-        kind: reference.kind,
-        mimeType: reference.mimeType,
-        source: reference.source,
+        inputs.push({
+          slot,
+          uploadField,
+          originAssetId: normalizedReference.originAssetId,
+          title: normalizedReference.title,
+          kind: normalizedReference.kind,
+          mimeType: normalizedReference.mimeType,
+          source: normalizedReference.source,
+        });
       });
     };
 
     for (const reference of currentDraft.references) {
-      appendInput("reference", reference);
+      await appendInput("reference", reference);
     }
 
-    appendInput("start_frame", currentDraft.startFrame);
-    appendInput("end_frame", currentDraft.endFrame);
+    await appendInput("start_frame", currentDraft.startFrame);
+    await appendInput("end_frame", currentDraft.endFrame);
 
     return {
       inputs,
       filesByField,
     };
-  }, [currentDraft.endFrame, currentDraft.references, currentDraft.startFrame]);
+  }, [
+    currentDraft.endFrame,
+    currentDraft.references,
+    currentDraft.startFrame,
+    selectedModel,
+  ]);
 
   const signOutHostedAccount = useCallback(async () => {
     if (appMode !== "hosted" || accountActionPending !== null) {
@@ -3271,8 +3351,42 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
   }, []);
 
   const setSelectedModelId = useCallback((modelId: string) => {
-    setSelectedModelIdState(getVisibleModelId(modelId));
-  }, [getVisibleModelId]);
+    const nextVisibleModelId = getVisibleModelId(modelId);
+    if (nextVisibleModelId === selectedModel.id) {
+      return;
+    }
+
+    const nextModel = getStudioModelById(nextVisibleModelId);
+    const transferredState = buildTransferredStudioDraftState({
+      sourceModel: selectedModel,
+      targetModel: nextModel,
+      sourceDraft: currentDraft,
+      targetPersistedDraft: draftsByModelId[nextVisibleModelId],
+      targetReferences: draftReferencesByModelId[nextVisibleModelId],
+      targetFrames: draftFramesByModelId[nextVisibleModelId],
+    });
+
+    setDraftsByModelId((current) => ({
+      ...current,
+      [nextVisibleModelId]: transferredState.persistedDraft,
+    }));
+    setDraftReferencesByModelId((current) => ({
+      ...current,
+      [nextVisibleModelId]: transferredState.references,
+    }));
+    setDraftFramesByModelId((current) => ({
+      ...current,
+      [nextVisibleModelId]: transferredState.frames,
+    }));
+    setSelectedModelIdState(nextVisibleModelId);
+  }, [
+    currentDraft,
+    draftFramesByModelId,
+    draftReferencesByModelId,
+    draftsByModelId,
+    getVisibleModelId,
+    selectedModel,
+  ]);
 
   const closeGenerationErrorDialog = useCallback(() => {
     setGenerationErrorDialogOpen(false);
@@ -3308,19 +3422,23 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     }
 
     if (appMode === "hosted") {
-      const hostedGenerationPayload = buildHostedGenerationPayload();
+      setGeneratePending(true);
       const request = beginHostedRequest();
 
-      void queueHostedGeneration({
-        modelId: selectedModel.id,
-        folderId: selectedFolderId,
-        draft: createDraftSnapshot(currentDraft),
-        inputs: hostedGenerationPayload.inputs,
-        filesByField: hostedGenerationPayload.filesByField,
-        signal: request.controller.signal,
-      })
+      void buildHostedGenerationPayload()
+        .then((hostedGenerationPayload) =>
+          queueHostedGeneration({
+            modelId: selectedModel.id,
+            folderId: null,
+            draft: createDraftSnapshot(currentDraft),
+            inputs: hostedGenerationPayload.inputs,
+            filesByField: hostedGenerationPayload.filesByField,
+            signal: request.controller.signal,
+          })
+        )
         .then((response) => {
           finishHostedRequest(request.controller);
+          setGeneratePending(false);
           applyHostedResponse(response.state, {
             requestId: request.requestId,
             sessionId: request.sessionId,
@@ -3328,6 +3446,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         })
         .catch((error) => {
           finishHostedRequest(request.controller);
+          setGeneratePending(false);
           if (isAbortRequestError(error)) {
             return;
           }
@@ -3360,19 +3479,23 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       return;
     }
 
-    const localGenerationPayload = buildHostedGenerationPayload();
+    setGeneratePending(true);
     const request = beginLocalRequest();
 
-    void queueLocalGenerationRequest({
-      modelId: selectedModel.id,
-      folderId: selectedFolderId,
-      draft: createDraftSnapshot(currentDraft),
-      inputs: localGenerationPayload.inputs as LocalStudioGenerateInputDescriptor[],
-      filesByField: localGenerationPayload.filesByField,
-      signal: request.controller.signal,
-    })
+    void buildHostedGenerationPayload()
+      .then((localGenerationPayload) =>
+        queueLocalGenerationRequest({
+          modelId: selectedModel.id,
+          folderId: null,
+          draft: createDraftSnapshot(currentDraft),
+          inputs: localGenerationPayload.inputs as LocalStudioGenerateInputDescriptor[],
+          filesByField: localGenerationPayload.filesByField,
+          signal: request.controller.signal,
+        })
+      )
       .then((response) => {
         finishLocalRequest(request.controller);
+        setGeneratePending(false);
         applyLocalResponse(response.snapshot, {
           preserveDrafts: true,
           requestId: request.requestId,
@@ -3382,6 +3505,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       })
       .catch((error) => {
         finishLocalRequest(request.controller);
+        setGeneratePending(false);
         if (isAbortRequestError(error)) {
           return;
         }
@@ -3420,7 +3544,6 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     openSettingsDialog,
     providerSettings,
     refreshLocalState,
-    selectedFolderId,
     selectedModel,
     surfaceGenerationError,
   ]);
@@ -3465,6 +3588,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     folders,
     gallerySizeLevel,
     generate,
+    generatePending,
     generationErrorDialogOpen,
     generationErrorMessage,
     getItemsForFolder: (folderId: string) =>
@@ -3511,6 +3635,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     selectedModel,
     selectedModelId: visibleSelectedModelId,
     selectionModeEnabled,
+    runs,
     settingsDialogOpen,
     setEndFrame: (file: File) => setFrameInput("end", file),
     setGallerySizeLevel,

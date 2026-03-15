@@ -2,9 +2,10 @@ import { getStudioModelById } from "./studio-model-catalog";
 import type { StudioDraft, StudioModelDefinition } from "./types";
 
 const CREDIT_MARKUP_MULTIPLIER = 1.15;
+const CREDITS_PER_USD = 10;
 
 function roundStudioCredits(value: number) {
-  return Math.max(0.1, Math.round(value * 10) / 10);
+  return Math.max(0.1, Math.ceil(value * 10) / 10);
 }
 
 function estimatePromptTokens(prompt: string) {
@@ -92,7 +93,9 @@ export function quoteStudioDraftPricing(
   const model =
     typeof modelOrId === "string" ? getStudioModelById(modelOrId) : modelOrId;
   const apiCostUsd = estimateApiCostUsd(model, draft);
-  const billedCredits = roundStudioCredits(apiCostUsd * 100 * CREDIT_MARKUP_MULTIPLIER);
+  const billedCredits = roundStudioCredits(
+    apiCostUsd * CREDITS_PER_USD * CREDIT_MARKUP_MULTIPLIER
+  );
   const maxTokens = resolveQuotedMaxTokens(model, draft);
 
   return {

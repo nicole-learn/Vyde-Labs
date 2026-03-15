@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -51,6 +51,7 @@ interface FloatingControlBarProps {
   onAddReferences: (files: File[]) => void;
   onDropLibraryItems: (itemIds: string[]) => Promise<string | null> | string | null;
   onGenerate: () => void;
+  generatePending?: boolean;
   onRemoveReference: (referenceId: string) => void;
   onSavePrompt: () => void;
   savePromptPending?: boolean;
@@ -75,6 +76,7 @@ export function FloatingControlBar({
   onAddReferences,
   onDropLibraryItems,
   onGenerate,
+  generatePending = false,
   onRemoveReference,
   onSavePrompt,
   savePromptPending = false,
@@ -100,6 +102,7 @@ export function FloatingControlBar({
   const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canGenerate = canGenerateWithDraft(model, draft);
+  const generateDisabled = !canGenerate || generatePending;
   const canSavePrompt = draft.prompt.trim().length > 0 && !savePromptPending;
   const quotedCredits = useMemo(
     () => quoteStudioDraftPricing(model, draft).billedCredits,
@@ -334,7 +337,26 @@ export function FloatingControlBar({
 
   const settingPills = useMemo<ControlPillConfig[]>(() => {
     if (model.kind === "text") {
-      return [];
+      const familyModels = models.filter(
+        (entry) => entry.kind === "text" && entry.familyId === model.familyId
+      );
+
+      if (familyModels.length <= 1) {
+        return [];
+      }
+
+      return [
+        {
+          id: "text-model-variant",
+          label: "Text Model",
+          value: selectedModelId,
+          options: familyModels.map((entry) => ({
+            value: entry.id,
+            label: entry.name,
+          })),
+          onValueChange: onSelectModel,
+        },
+      ];
     }
 
     const pills: ControlPillConfig[] = [];
@@ -493,8 +515,11 @@ export function FloatingControlBar({
     draft.videoInputMode,
     draft.voice,
     model,
+    models,
+    onSelectModel,
     onSetVideoInputMode,
     onUpdateDraft,
+    selectedModelId,
   ]);
 
   return (
@@ -641,16 +666,27 @@ export function FloatingControlBar({
                   ) : null}
                   <button
                     type="button"
-                    disabled={!canGenerate}
+                    disabled={generateDisabled}
                     onClick={onGenerate}
+                    aria-busy={generatePending}
                     style={{
                       background:
                         "linear-gradient(180deg, color-mix(in oklch, var(--primary) 78%, white) 0%, color-mix(in oklch, var(--primary) 88%, black) 100%)",
                     }}
-                    className="flex h-[70px] items-center gap-2 rounded-xl px-5 text-base font-semibold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_26px_color-mix(in_oklch,var(--primary)_18%,transparent)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+                    className="flex h-[70px] w-[176px] items-center justify-center gap-2 rounded-xl px-5 text-base font-semibold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_26px_color-mix(in_oklch,var(--primary)_18%,transparent)] transition-[filter,opacity] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
                   >
-                    <span>{`Generate • ${quotedCredits.toFixed(1)} credits`}</span>
-                    <Sparkles className="size-4" />
+                    {generatePending ? (
+                      <>
+                        <span>Queuing...</span>
+                        <Loader2 className="size-4 animate-spin" />
+                      </>
+                    ) : (
+                      <>
+                        <span>Generate</span>
+                        <Sparkles className="size-4" />
+                        <span>{quotedCredits.toFixed(1)}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

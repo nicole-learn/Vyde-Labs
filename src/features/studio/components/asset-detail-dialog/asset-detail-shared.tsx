@@ -11,6 +11,11 @@ export interface AssetInfoRow {
   value: string;
 }
 
+export const ASSET_DETAIL_DIALOG_LAYER_CLASS = "z-[10000]";
+
+export const ASSET_DETAIL_INFO_PANEL_CLASS_NAME =
+  "flex min-h-0 flex-col overflow-hidden rounded-2xl bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl lg:max-h-[calc(100vh-1.5rem)] lg:self-start";
+
 export function formatAssetCreatedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {

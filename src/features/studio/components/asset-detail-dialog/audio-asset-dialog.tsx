@@ -2,8 +2,11 @@
 
 import { Copy, Download, Trash2, WandSparkles, X, AudioLines } from "lucide-react";
 import { useMemo, useState } from "react";
+import { cn } from "@/lib/cn";
 import type { LibraryItem } from "../../types";
 import {
+  ASSET_DETAIL_DIALOG_LAYER_CLASS,
+  ASSET_DETAIL_INFO_PANEL_CLASS_NAME,
   ActionButton,
   buildAssetInfoRows,
   copyTextToClipboard,
@@ -37,7 +40,10 @@ export function AudioAssetDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[90] bg-black/50 supports-backdrop-filter:backdrop-blur-sm"
+      className={cn(
+        "fixed inset-0 bg-black/50 supports-backdrop-filter:backdrop-blur-sm",
+        ASSET_DETAIL_DIALOG_LAYER_CLASS
+      )}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -87,7 +93,7 @@ export function AudioAssetDialog({
           </div>
         </div>
 
-        <aside className="flex min-h-0 flex-col bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl">
+        <aside className={ASSET_DETAIL_INFO_PANEL_CLASS_NAME}>
           <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-5">
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-foreground">{title}</h2>

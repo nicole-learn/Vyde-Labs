@@ -397,6 +397,7 @@ export type Database = {
           cancelled_at: string | null;
           completed_at: string | null;
           created_at: string;
+          deleted_at: string | null;
           dispatch_attempt_count: number;
           dispatch_lease_expires_at: string | null;
           draft_snapshot: Json;
@@ -435,6 +436,7 @@ export type Database = {
           cancelled_at?: string | null;
           completed_at?: string | null;
           created_at?: string;
+          deleted_at?: string | null;
           dispatch_attempt_count?: number;
           dispatch_lease_expires_at?: string | null;
           draft_snapshot?: Json;
@@ -473,6 +475,7 @@ export type Database = {
           cancelled_at?: string | null;
           completed_at?: string | null;
           created_at?: string;
+          deleted_at?: string | null;
           dispatch_attempt_count?: number;
           dispatch_lease_expires_at?: string | null;
           draft_snapshot?: Json;

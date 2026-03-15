@@ -226,6 +226,7 @@ export interface GenerationRun {
   userId: string;
   workspaceId: string;
   folderId: string | null;
+  deletedAt?: string | null;
   modelId: string;
   modelName: string;
   kind: StudioModelKind;

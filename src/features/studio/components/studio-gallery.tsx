@@ -39,6 +39,7 @@ import { useDragHoverReset } from "../use-drag-hover-reset";
 
 interface StudioGalleryProps {
   allowDropMove?: boolean;
+  allRuns?: GenerationRun[];
   dragImageRef?: RefObject<HTMLDivElement | null>;
   draggingItemIdSet?: Set<string>;
   emptyStateActionLabel?: string;
@@ -77,17 +78,28 @@ type GalleryDisplayItem =
       item: LibraryItem;
       key: string;
       aspectRatio: number;
+      sortIndex: number;
     }
   | {
       type: "run";
       run: GenerationRun;
       key: string;
       aspectRatio: number;
+      sortIndex: number;
     };
 
-const ROW_HEIGHTS = [360, 320, 280, 240, 210, 180, 150];
 const TILE_GAP_PX = 3;
 const GALLERY_EDGE_INSET_PX = TILE_GAP_PX;
+const MAX_ROW_CANDIDATES = 14;
+const SIZE_LEVELS = [
+  { label: "Small", targetRowHeight: 170, maxTileHeight: 280 },
+  { label: "Small Plus", targetRowHeight: 205, maxTileHeight: 335 },
+  { label: "Medium Small", targetRowHeight: 266.25, maxTileHeight: 442.5 },
+  { label: "Medium Small Plus", targetRowHeight: 327.5, maxTileHeight: 550 },
+  { label: "Medium", targetRowHeight: 380, maxTileHeight: 640 },
+  { label: "Medium Large", targetRowHeight: 500, maxTileHeight: 860 },
+  { label: "Large", targetRowHeight: 620, maxTileHeight: 1080 },
+] as const;
 
 interface CardStatusVisual {
   badgeClassName: string;
@@ -208,34 +220,92 @@ function buildRows(items: GalleryDisplayItem[], containerWidth: number, sizeLeve
     return [] satisfies GalleryRow[];
   }
 
-  const targetHeight = ROW_HEIGHTS[sizeLevel] ?? ROW_HEIGHTS[2];
-  const minHeight = Math.max(targetHeight * 0.66, 130);
-  const maxHeight = targetHeight * 1.16;
-  const rows: GalleryRow[] = [];
+  const sizeConfig = SIZE_LEVELS[sizeLevel] ?? SIZE_LEVELS[3];
+  const targetRowHeight = sizeConfig.targetRowHeight;
+  const minRowHeight = targetRowHeight * 0.58;
+  const maxRowHeight = targetRowHeight * 1.42;
+  const ratios = items.map((item) => item.aspectRatio);
+  const prefixSums = [0];
 
-  let currentRow: GalleryDisplayItem[] = [];
-  let aspectRatioSum = 0;
+  for (const ratio of ratios) {
+    prefixSums.push(prefixSums[prefixSums.length - 1] + ratio);
+  }
 
-  for (const item of items) {
-    currentRow.push(item);
-    aspectRatioSum += item.aspectRatio;
+  const itemCount = items.length;
+  const dp = new Array<number>(itemCount + 1).fill(Number.POSITIVE_INFINITY);
+  const nextBreak = new Array<number>(itemCount + 1).fill(itemCount);
+  dp[itemCount] = 0;
 
-    const availableWidth = containerWidth - TILE_GAP_PX * (currentRow.length - 1);
-    const rowHeight = availableWidth / aspectRatioSum;
-    const shouldCommit =
-      rowHeight <= targetHeight || currentRow.length >= 4 || item === items[items.length - 1];
+  for (let start = itemCount - 1; start >= 0; start -= 1) {
+    let bestCost = Number.POSITIVE_INFINITY;
+    let bestEnd = start + 1;
+    const maxEnd = Math.min(itemCount, start + MAX_ROW_CANDIDATES);
 
-    if (!shouldCommit) {
-      continue;
+    for (let end = start + 1; end <= maxEnd; end += 1) {
+      const count = end - start;
+      const availableWidth = containerWidth - TILE_GAP_PX * (count - 1);
+      if (availableWidth <= 0) {
+        break;
+      }
+
+      const rowRatioSum = prefixSums[end] - prefixSums[start];
+      if (rowRatioSum <= 0) {
+        continue;
+      }
+
+      const rowHeight = availableWidth / rowRatioSum;
+      const normalizedDelta = (rowHeight - targetRowHeight) / targetRowHeight;
+      let rowCost = normalizedDelta * normalizedDelta;
+
+      if (rowHeight < minRowHeight) {
+        const underflow = (minRowHeight - rowHeight) / targetRowHeight;
+        rowCost += 12 * underflow * underflow + 2;
+      }
+
+      if (rowHeight > maxRowHeight) {
+        const overflow = (rowHeight - maxRowHeight) / targetRowHeight;
+        rowCost += 9 * overflow * overflow + 1.5;
+      }
+
+      if (count === 1 && end < itemCount) {
+        rowCost += 0.35;
+      }
+
+      const totalCost = rowCost + dp[end];
+      if (totalCost < bestCost) {
+        bestCost = totalCost;
+        bestEnd = end;
+      }
+
+      if (rowHeight < minRowHeight * 0.55) {
+        break;
+      }
     }
 
+    dp[start] = bestCost;
+    nextBreak[start] = bestEnd;
+  }
+
+  const rows: GalleryRow[] = [];
+  let cursor = 0;
+
+  while (cursor < itemCount) {
+    const end = nextBreak[cursor] > cursor ? nextBreak[cursor] : cursor + 1;
+    const rowItems = items.slice(cursor, end);
+    const availableWidth = containerWidth - TILE_GAP_PX * (rowItems.length - 1);
+    const rowRatioSum = rowItems.reduce((sum, item) => sum + item.aspectRatio, 0);
+    const rowHeight = Math.min(
+      Math.max(availableWidth / rowRatioSum, 1),
+      maxRowHeight,
+      sizeConfig.maxTileHeight
+    );
+
     rows.push({
-      items: currentRow,
-      height: Math.min(Math.max(rowHeight, minHeight), maxHeight),
+      items: rowItems,
+      height: rowHeight,
     });
 
-    currentRow = [];
-    aspectRatioSum = 0;
+    cursor = end;
   }
 
   return rows;
@@ -258,6 +328,25 @@ function getGalleryDisplayItemChronology(displayItem: GalleryDisplayItem) {
   }
 
   return parseGalleryTimestamp(displayItem.item.createdAt || displayItem.item.updatedAt);
+}
+
+function getGalleryDisplayItemChronologyWithRuns(
+  displayItem: GalleryDisplayItem,
+  runChronologyById: Map<string, number>
+) {
+  if (displayItem.type === "run") {
+    return getGalleryDisplayItemChronology(displayItem);
+  }
+
+  const sourceRunId = displayItem.item.sourceRunId ?? displayItem.item.runId;
+  if (!sourceRunId) {
+    return getGalleryDisplayItemChronology(displayItem);
+  }
+
+  const sourceRunChronology = runChronologyById.get(sourceRunId);
+  return typeof sourceRunChronology === "number"
+    ? sourceRunChronology
+    : getGalleryDisplayItemChronology(displayItem);
 }
 
 function useMeasuredWidth() {
@@ -336,10 +425,7 @@ function AssetTile({
     const statusVisual = getRunStatusVisual(displayItem.run.status);
     const statusDescription = getRunStatusDescription(displayItem.run);
     const canCancelRun = displayItem.run.status === "queued" || displayItem.run.status === "pending";
-    const canDeleteRun =
-      Boolean(onDeleteRun) &&
-      !canCancelRun &&
-      displayItem.run.status !== "processing";
+    const canDeleteRun = Boolean(onDeleteRun) && !canCancelRun;
 
     return (
       <div
@@ -558,7 +644,7 @@ function AssetTile({
           </div>
         </div>
       ) : item.kind === "text" ? (
-        <div className="flex size-full flex-col p-4 pt-12">
+        <div className="flex size-full flex-col p-4">
           <p className="line-clamp-8 text-sm leading-6 text-black/82">
             {item.contentText || item.prompt || item.title}
           </p>
@@ -681,6 +767,7 @@ function AssetTile({
 
 export function StudioGallery({
   allowDropMove = false,
+  allRuns = [],
   dragImageRef,
   draggingItemIdSet,
   emptyStateActionLabel,
@@ -705,6 +792,23 @@ export function StudioGallery({
   const { containerRef, width } = useMeasuredWidth();
   const [dropActive, setDropActive] = useState(false);
 
+  const runChronologyById = useMemo(
+    () =>
+      new Map(
+        allRuns.map((run) => [
+          run.id,
+          getGalleryDisplayItemChronology({
+            type: "run",
+            run,
+            key: run.id,
+            aspectRatio: 1,
+            sortIndex: -1,
+          }),
+        ])
+      ),
+    [allRuns]
+  );
+
   useDragHoverReset({
     active: dropActive,
     containerRef,
@@ -712,16 +816,8 @@ export function StudioGallery({
   });
 
   const galleryItems = useMemo(() => {
-    const outputItems = items.map(
-      (item): GalleryDisplayItem => ({
-        type: "asset",
-        item,
-        key: item.id,
-        aspectRatio: getLibraryItemDisplayAspectRatio(item),
-      })
-    );
     const runDisplayItems = runCards.map(
-      (run): GalleryDisplayItem => ({
+      (run, index): GalleryDisplayItem => ({
         type: "run",
         run,
         key: run.id,
@@ -732,20 +828,38 @@ export function StudioGallery({
                 kind: run.kind,
                 aspectRatioLabel: run.draftSnapshot.aspectRatio,
               }),
+        sortIndex: index,
+      })
+    );
+    const outputItems = items.map(
+      (item, index): GalleryDisplayItem => ({
+        type: "asset",
+        item,
+        key: item.id,
+        aspectRatio: getLibraryItemDisplayAspectRatio(item),
+        sortIndex: runDisplayItems.length + index,
       })
     );
 
     return [...runDisplayItems, ...outputItems].sort((left, right) => {
+      const leftChronology = getGalleryDisplayItemChronologyWithRuns(
+        left,
+        runChronologyById
+      );
+      const rightChronology = getGalleryDisplayItemChronologyWithRuns(
+        right,
+        runChronologyById
+      );
       const chronologyDiff =
-        getGalleryDisplayItemChronology(right) - getGalleryDisplayItemChronology(left);
+        rightChronology - leftChronology;
 
       if (chronologyDiff !== 0) {
         return chronologyDiff;
       }
 
-      return right.key.localeCompare(left.key);
+      return left.sortIndex - right.sortIndex;
     });
-  }, [items, runCards]);
+  }, [items, runCards, runChronologyById]);
 
   const rows = useMemo(
     () => buildRows(galleryItems, Math.max(width, 0), sizeLevel),

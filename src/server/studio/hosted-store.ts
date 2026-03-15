@@ -322,6 +322,7 @@ function mapGenerationRun(row: GenerationRunRow): GenerationRun {
     userId: row.user_id,
     workspaceId: HOSTED_STUDIO_WORKSPACE_ID,
     folderId: row.folder_id,
+    deletedAt: row.deleted_at,
     modelId: row.model_id,
     modelName: row.model_name,
     kind: row.kind as GenerationRun["kind"],
@@ -514,12 +515,23 @@ async function listHostedUserItems(supabase: HostedSupabaseClient, userId: strin
   return data ?? [];
 }
 
-async function listHostedUserRuns(supabase: HostedSupabaseClient, userId: string) {
-  const { data, error } = await supabase
+async function listHostedUserRuns(
+  supabase: HostedSupabaseClient,
+  userId: string,
+  options?: {
+    includeDeleted?: boolean;
+  }
+) {
+  let query = supabase
     .from("generation_runs")
     .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+    .eq("user_id", userId);
+
+  if (!options?.includeDeleted) {
+    query = query.is("deleted_at", null);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
@@ -559,13 +571,16 @@ async function removeHostedStoragePaths(
   }
 }
 
-async function deleteHostedRuns(params: {
+async function purgeHostedRuns(params: {
   supabase: HostedSupabaseClient;
-  user: User;
+  userId: string;
   runIds: string[];
+  refundActiveRuns: boolean;
 }) {
   const targetRunIdSet = new Set(params.runIds);
-  const runRows = await listHostedUserRuns(params.supabase, params.user.id);
+  const runRows = await listHostedUserRuns(params.supabase, params.userId, {
+    includeDeleted: true,
+  });
   const targetRuns = runRows.filter((run) => targetRunIdSet.has(run.id));
 
   if (targetRuns.length === 0) {
@@ -577,7 +592,7 @@ async function deleteHostedRuns(params: {
       .map((run) => run.output_asset_id)
       .filter((value): value is string => Boolean(value))
   );
-  const itemRows = await listHostedUserItems(params.supabase, params.user.id);
+  const itemRows = await listHostedUserItems(params.supabase, params.userId);
   const generatedItems = itemRows.filter(
     (item) =>
       outputAssetIdSet.has(item.id) ||
@@ -590,7 +605,7 @@ async function deleteHostedRuns(params: {
       .flatMap((item) => [item.run_file_id, item.thumbnail_file_id])
       .filter((value): value is string => Boolean(value))
   );
-  const runFileRows = await listHostedUserRunFiles(params.supabase, params.user.id);
+  const runFileRows = await listHostedUserRunFiles(params.supabase, params.userId);
   const generatedRunFiles = runFileRows.filter(
     (runFile) =>
       (runFile.run_id ? targetRunIdSet.has(runFile.run_id) : false) ||
@@ -607,12 +622,13 @@ async function deleteHostedRuns(params: {
 
   for (const run of targetRuns) {
     if (
+      params.refundActiveRuns &&
       (run.status === "queued" || run.status === "pending" || run.status === "processing") &&
       run.estimated_credits
     ) {
       await applyHostedCreditLedgerEntry({
         supabase: params.supabase,
-        userId: params.user.id,
+        userId: params.userId,
         deltaCredits: run.estimated_credits,
         reason: "generation_refund",
         relatedRunId: run.id,
@@ -631,7 +647,7 @@ async function deleteHostedRuns(params: {
     const { error: deleteItemsError } = await params.supabase
       .from("library_items")
       .delete()
-      .eq("user_id", params.user.id)
+      .eq("user_id", params.userId)
       .in("id", generatedItemIds);
 
     if (deleteItemsError) {
@@ -643,7 +659,7 @@ async function deleteHostedRuns(params: {
     const { error: deleteRunFilesError } = await params.supabase
       .from("run_files")
       .delete()
-      .eq("user_id", params.user.id)
+      .eq("user_id", params.userId)
       .in("id", generatedRunFileIds);
 
     if (deleteRunFilesError) {
@@ -654,12 +670,73 @@ async function deleteHostedRuns(params: {
   const { error: deleteRunsError } = await params.supabase
     .from("generation_runs")
     .delete()
-    .eq("user_id", params.user.id)
+    .eq("user_id", params.userId)
     .in("id", Array.from(targetRunIdSet));
 
   if (deleteRunsError) {
     throw new Error(deleteRunsError.message);
   }
+}
+
+async function deleteHostedRuns(params: {
+  supabase: HostedSupabaseClient;
+  user: User;
+  runIds: string[];
+}) {
+  const targetRunIdSet = new Set(params.runIds);
+  const runRows = await listHostedUserRuns(params.supabase, params.user.id, {
+    includeDeleted: true,
+  });
+  const targetRuns = runRows.filter((run) => targetRunIdSet.has(run.id));
+
+  if (targetRuns.length === 0) {
+    return;
+  }
+
+  const deletedAt = new Date().toISOString();
+  const processingRunIds = targetRuns
+    .filter((run) => run.status === "processing")
+    .map((run) => run.id);
+  const hardDeleteRunIds = targetRuns
+    .filter((run) => run.status !== "processing")
+    .map((run) => run.id);
+
+  if (processingRunIds.length > 0) {
+    const { error: hideRunsError } = await params.supabase
+      .from("generation_runs")
+      .update({
+        deleted_at: deletedAt,
+        updated_at: deletedAt,
+        can_cancel: false,
+      })
+      .eq("user_id", params.user.id)
+      .in("id", processingRunIds);
+
+    if (hideRunsError) {
+      throw new Error(hideRunsError.message);
+    }
+  }
+
+  if (hardDeleteRunIds.length > 0) {
+    await purgeHostedRuns({
+      supabase: params.supabase,
+      userId: params.user.id,
+      runIds: hardDeleteRunIds,
+      refundActiveRuns: true,
+    });
+  }
+}
+
+async function finalizeDeletedHostedRun(params: {
+  supabase: HostedSupabaseClient;
+  run: GenerationRunRow;
+}) {
+  await purgeHostedRuns({
+    supabase: params.supabase,
+    userId: params.run.user_id,
+    runIds: [params.run.id],
+    refundActiveRuns: false,
+  });
 }
 
 async function getHostedRunByProviderRequestId(
@@ -694,6 +771,107 @@ async function getHostedRunById(
   }
 
   return data;
+}
+
+async function findHostedGeneratedItemIdForRun(params: {
+  supabase: HostedSupabaseClient;
+  userId: string;
+  runId: string;
+  preferredItemId?: string | null;
+}) {
+  const preferredItemId = params.preferredItemId?.trim() || null;
+
+  if (preferredItemId) {
+    const { data, error } = await params.supabase
+      .from("library_items")
+      .select("id")
+      .eq("id", preferredItemId)
+      .eq("user_id", params.userId)
+      .eq("source", "generated")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (data) {
+      return data.id;
+    }
+  }
+
+  const { data, error } = await params.supabase
+    .from("library_items")
+    .select("id")
+    .eq("user_id", params.userId)
+    .eq("source", "generated")
+    .or(`source_run_id.eq.${params.runId},run_id.eq.${params.runId}`)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data?.id ?? null;
+}
+
+async function removeHostedGeneratedOutputArtifacts(params: {
+  supabase: HostedSupabaseClient;
+  userId: string;
+  runFileId: string | null;
+  storagePath: string | null;
+}) {
+  if (params.storagePath) {
+    await removeHostedStoragePaths(params.supabase, [params.storagePath]);
+  }
+
+  if (!params.runFileId) {
+    return;
+  }
+
+  const { error } = await params.supabase
+    .from("run_files")
+    .delete()
+    .eq("id", params.runFileId)
+    .eq("user_id", params.userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+async function markHostedRunCompleted(params: {
+  supabase: HostedSupabaseClient;
+  run: GenerationRunRow;
+  outputAssetId: string;
+  finishedAt: string;
+  outputText: string | null;
+  usageSnapshot: Record<string, unknown>;
+}) {
+  const usageCost =
+    typeof params.usageSnapshot.cost === "number" ? params.usageSnapshot.cost : null;
+  const { error: runError } = await params.supabase
+    .from("generation_runs")
+    .update({
+      status: "completed",
+      provider_status: "completed",
+      output_asset_id: params.outputAssetId,
+      actual_cost_usd: usageCost ?? params.run.estimated_cost_usd,
+      actual_credits: params.run.estimated_credits,
+      completed_at: params.finishedAt,
+      updated_at: params.finishedAt,
+      can_cancel: false,
+      output_text: params.outputText,
+      usage_snapshot: params.usageSnapshot as Json,
+    })
+    .eq("id", params.run.id)
+    .eq("user_id", params.run.user_id)
+    .is("deleted_at", null);
+
+  if (runError) {
+    throw new Error(runError.message);
+  }
 }
 
 async function downloadHostedStorageBlob(params: {
@@ -953,18 +1131,58 @@ async function completeHostedRunFromProviderPayload(params: {
   run: GenerationRunRow;
   payload: Record<string, unknown>;
 }) {
-  const model = getStudioModelById(params.run.model_id);
-  const draft = hydrateDraft(parseDraftSnapshot(params.run.draft_snapshot, params.run.model_id), model);
+  const currentRun = await getHostedRunById(params.supabase, params.run.id);
+  if (!currentRun) {
+    return;
+  }
+
+  if (currentRun.deleted_at) {
+    await finalizeDeletedHostedRun({
+      supabase: params.supabase,
+      run: currentRun,
+    });
+    return;
+  }
+
+  const model = getStudioModelById(currentRun.model_id);
+  const draft = hydrateDraft(
+    parseDraftSnapshot(currentRun.draft_snapshot, currentRun.model_id),
+    model
+  );
   const resolved = resolveStudioFalCompletedPayload({
-    modelId: params.run.model_id,
-    requestMode: params.run.request_mode as GenerationRun["requestMode"],
+    modelId: currentRun.model_id,
+    requestMode: currentRun.request_mode as GenerationRun["requestMode"],
     draft: toPersistedDraft(draft),
     payload: params.payload,
   });
   const finishedAt = new Date().toISOString();
   const outputTitle =
-    params.run.prompt.trim().slice(0, 72) || `${params.run.model_name} output`;
+    currentRun.prompt.trim().slice(0, 72) || `${currentRun.model_name} output`;
+  const existingItemId = await findHostedGeneratedItemIdForRun({
+    supabase: params.supabase,
+    userId: currentRun.user_id,
+    runId: currentRun.id,
+    preferredItemId: currentRun.output_asset_id,
+  });
+
+  if (existingItemId) {
+    if (currentRun.status === "completed" && currentRun.output_asset_id === existingItemId) {
+      return;
+    }
+
+    await markHostedRunCompleted({
+      supabase: params.supabase,
+      run: currentRun,
+      outputAssetId: existingItemId,
+      finishedAt,
+      outputText: resolved.outputText,
+      usageSnapshot: resolved.usageSnapshot,
+    });
+    return;
+  }
+
   let outputRunFileId: string | null = null;
+  let outputStoragePath: string | null = null;
   let fileName: string | null = null;
   let mimeType: string | null = null;
   let byteSize: number | null = null;
@@ -977,12 +1195,13 @@ async function completeHostedRunFromProviderPayload(params: {
   if (resolved.outputFile) {
     const uploaded = await uploadHostedGeneratedOutputFile({
       supabase: params.supabase,
-      run: params.run,
+      run: currentRun,
       fileUrl: resolved.outputFile.url,
       fileName: resolved.outputFile.fileName,
       mimeType: resolved.outputFile.mimeType,
     });
     outputRunFileId = uploaded.runFileId;
+    outputStoragePath = uploaded.storagePath;
     fileName = uploaded.fileName;
     mimeType = uploaded.mimeType;
     byteSize = uploaded.byteSize;
@@ -994,8 +1213,8 @@ async function completeHostedRunFromProviderPayload(params: {
 
     const { error: runFileError } = await params.supabase.from("run_files").insert({
       id: outputRunFileId,
-      run_id: params.run.id,
-      user_id: params.run.user_id,
+      run_id: currentRun.id,
+      user_id: currentRun.user_id,
       file_role: "output",
       source_type: "generated",
       storage_bucket: HOSTED_MEDIA_BUCKET,
@@ -1026,12 +1245,67 @@ async function completeHostedRunFromProviderPayload(params: {
   }
 
   const nextItemId = createHostedUuid();
+  const latestRun = await getHostedRunById(params.supabase, currentRun.id);
+  if (!latestRun) {
+    if (outputRunFileId) {
+      await params.supabase.from("run_files").delete().eq("id", outputRunFileId);
+    }
+    if (outputStoragePath) {
+      await removeHostedStoragePaths(params.supabase, [outputStoragePath]);
+    }
+    return;
+  }
+
+  if (latestRun.deleted_at) {
+    await removeHostedGeneratedOutputArtifacts({
+      supabase: params.supabase,
+      userId: currentRun.user_id,
+      runFileId: outputRunFileId,
+      storagePath: outputStoragePath,
+    });
+    await finalizeDeletedHostedRun({
+      supabase: params.supabase,
+      run: latestRun,
+    });
+    return;
+  }
+
+  const latestExistingItemId = await findHostedGeneratedItemIdForRun({
+    supabase: params.supabase,
+    userId: latestRun.user_id,
+    runId: latestRun.id,
+    preferredItemId: latestRun.output_asset_id,
+  });
+
+  if (latestExistingItemId) {
+    await removeHostedGeneratedOutputArtifacts({
+      supabase: params.supabase,
+      userId: latestRun.user_id,
+      runFileId: outputRunFileId,
+      storagePath: outputStoragePath,
+    });
+
+    if (latestRun.status === "completed" && latestRun.output_asset_id === latestExistingItemId) {
+      return;
+    }
+
+    await markHostedRunCompleted({
+      supabase: params.supabase,
+      run: latestRun,
+      outputAssetId: latestExistingItemId,
+      finishedAt,
+      outputText: resolved.outputText,
+      usageSnapshot: resolved.usageSnapshot,
+    });
+    return;
+  }
+
   const { error: itemError } = await params.supabase.from("library_items").insert({
     id: nextItemId,
-    user_id: params.run.user_id,
+    user_id: latestRun.user_id,
     run_file_id: outputRunFileId,
     thumbnail_file_id: null,
-    source_run_id: params.run.id,
+    source_run_id: latestRun.id,
     title: outputTitle,
     kind: resolved.outputKind,
     source: "generated",
@@ -1039,18 +1313,18 @@ async function completeHostedRunFromProviderPayload(params: {
     content_text: resolved.outputText,
     created_at: finishedAt,
     updated_at: finishedAt,
-    model_id: params.run.model_id,
-    run_id: params.run.id,
-    provider: params.run.provider as LibraryItem["provider"],
+    model_id: latestRun.model_id,
+    run_id: latestRun.id,
+    provider: latestRun.provider as LibraryItem["provider"],
     status: "ready",
-    prompt: params.run.prompt,
-    meta: `${params.run.model_name} • ${params.run.summary}`,
+    prompt: latestRun.prompt,
+    meta: `${latestRun.model_name} • ${latestRun.summary}`,
     media_width: mediaWidth,
     media_height: mediaHeight,
     media_duration_seconds: mediaDurationSeconds,
     aspect_ratio_label: aspectRatioLabel,
     has_alpha: hasAlpha,
-    folder_id: params.run.folder_id,
+    folder_id: latestRun.folder_id,
     file_name: fileName,
     mime_type: mimeType,
     byte_size: byteSize,
@@ -1059,31 +1333,45 @@ async function completeHostedRunFromProviderPayload(params: {
   });
 
   if (itemError) {
+    if (itemError.code === "23505") {
+      const conflictingItemId = await findHostedGeneratedItemIdForRun({
+        supabase: params.supabase,
+        userId: latestRun.user_id,
+        runId: latestRun.id,
+        preferredItemId: latestRun.output_asset_id,
+      });
+
+      if (conflictingItemId) {
+        await removeHostedGeneratedOutputArtifacts({
+          supabase: params.supabase,
+          userId: latestRun.user_id,
+          runFileId: outputRunFileId,
+          storagePath: outputStoragePath,
+        });
+
+        await markHostedRunCompleted({
+          supabase: params.supabase,
+          run: latestRun,
+          outputAssetId: conflictingItemId,
+          finishedAt,
+          outputText: resolved.outputText,
+          usageSnapshot: resolved.usageSnapshot,
+        });
+        return;
+      }
+    }
+
     throw new Error(itemError.message);
   }
 
-  const usageCost =
-    typeof resolved.usageSnapshot.cost === "number" ? resolved.usageSnapshot.cost : null;
-  const { error: runError } = await params.supabase
-    .from("generation_runs")
-    .update({
-      status: "completed",
-      provider_status: "completed",
-      output_asset_id: nextItemId,
-      actual_cost_usd: usageCost ?? params.run.estimated_cost_usd,
-      actual_credits: params.run.estimated_credits,
-      completed_at: finishedAt,
-      updated_at: finishedAt,
-      can_cancel: false,
-      output_text: resolved.outputText,
-      usage_snapshot: resolved.usageSnapshot as Json,
-    })
-    .eq("id", params.run.id)
-    .eq("user_id", params.run.user_id);
-
-  if (runError) {
-    throw new Error(runError.message);
-  }
+  await markHostedRunCompleted({
+    supabase: params.supabase,
+    run: latestRun,
+    outputAssetId: nextItemId,
+    finishedAt,
+    outputText: resolved.outputText,
+    usageSnapshot: resolved.usageSnapshot,
+  });
 }
 
 async function failHostedRun(params: {
@@ -1092,6 +1380,19 @@ async function failHostedRun(params: {
   refundCredits: boolean;
   errorMessage: string;
 }) {
+  const currentRun = await getHostedRunById(params.supabase, params.run.id);
+  if (!currentRun) {
+    return;
+  }
+
+  if (currentRun.deleted_at) {
+    await finalizeDeletedHostedRun({
+      supabase: params.supabase,
+      run: currentRun,
+    });
+    return;
+  }
+
   const finishedAt = new Date().toISOString();
 
   const { error } = await params.supabase
@@ -1105,22 +1406,22 @@ async function failHostedRun(params: {
       can_cancel: false,
       error_message: params.errorMessage,
     })
-    .eq("id", params.run.id)
-    .eq("user_id", params.run.user_id);
+    .eq("id", currentRun.id)
+    .eq("user_id", currentRun.user_id);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (params.refundCredits && params.run.estimated_credits) {
+  if (params.refundCredits && currentRun.estimated_credits) {
     await applyHostedCreditLedgerEntry({
       supabase: params.supabase,
-      userId: params.run.user_id,
-      deltaCredits: params.run.estimated_credits,
+      userId: currentRun.user_id,
+      deltaCredits: currentRun.estimated_credits,
       reason: "generation_refund",
-      relatedRunId: params.run.id,
-      idempotencyKey: `generation:${params.run.id}:failed_refund`,
-      sourceEventId: `generation_run:${params.run.id}:failed`,
+      relatedRunId: currentRun.id,
+      idempotencyKey: `generation:${currentRun.id}:failed_refund`,
+      sourceEventId: `generation_run:${currentRun.id}:failed`,
       metadata: {
         status: "failed",
       },
@@ -1147,7 +1448,7 @@ async function dispatchHostedRun(params: {
       throw new Error(`${model.providerLabel} is not configured on the hosted server.`);
     }
 
-    const { error: startError } = await params.supabase
+    const { data: claimedRun, error: startError } = await params.supabase
       .from("generation_runs")
       .update({
         status: "processing",
@@ -1159,22 +1460,33 @@ async function dispatchHostedRun(params: {
       })
       .eq("id", params.run.id)
       .eq("user_id", params.run.user_id)
-      .in("status", ["queued", "pending"]);
+      .in("status", ["queued", "pending"])
+      .select("*")
+      .maybeSingle();
 
     if (startError) {
       throw new Error(startError.message);
     }
 
+    if (!claimedRun) {
+      return;
+    }
+
+    const inputs = await loadHostedRunInputFiles({
+      supabase: params.supabase,
+      run: claimedRun,
+    });
     const result = await generateStudioTextProviderPayload({
-      modelId: params.run.model_id,
+      modelId: claimedRun.model_id,
       prompt: draft.prompt,
       providerApiKey,
+      inputs,
     });
 
     await completeHostedRunFromProviderPayload({
       supabase: params.supabase,
       run: {
-        ...params.run,
+        ...claimedRun,
         status: "processing",
         started_at: startedAt,
         updated_at: startedAt,
@@ -1190,19 +1502,43 @@ async function dispatchHostedRun(params: {
     throw new Error("FAL_WEBHOOK_SECRET is not configured.");
   }
 
+  const { data: claimedRun, error: claimError } = await params.supabase
+    .from("generation_runs")
+    .update({
+      status: "processing",
+      started_at: startedAt,
+      updated_at: startedAt,
+      provider_status: "in_queue",
+      dispatch_attempt_count: params.run.dispatch_attempt_count + 1,
+      can_cancel: false,
+    })
+    .eq("id", params.run.id)
+    .eq("user_id", params.run.user_id)
+    .in("status", ["queued", "pending"])
+    .select("*")
+    .maybeSingle();
+
+  if (claimError) {
+    throw new Error(claimError.message);
+  }
+
+  if (!claimedRun) {
+    return;
+  }
+
   const inputs = await loadHostedRunInputFiles({
     supabase: params.supabase,
-    run: params.run,
+    run: claimedRun,
   });
   const queuedRequest = await submitStudioFalRequest({
     falKey,
-    modelId: params.run.model_id,
+    modelId: claimedRun.model_id,
     requestMode,
     draft: toPersistedDraft(draft),
     inputs,
     webhookUrl: toStudioFalWebhookUrl({
       baseUrl: params.webhookBaseUrl,
-      runId: params.run.id,
+      runId: claimedRun.id,
       webhookSecret,
     }),
   });
@@ -1214,16 +1550,15 @@ async function dispatchHostedRun(params: {
       updated_at: startedAt,
       provider_request_id: queuedRequest.requestId,
       provider_status: "in_queue",
-      dispatch_attempt_count: params.run.dispatch_attempt_count + 1,
       can_cancel: false,
       input_payload: {
-        ...parseObjectJson(params.run.input_payload),
+        ...parseObjectJson(claimedRun.input_payload),
         provider_endpoint_id: queuedRequest.endpointId,
       } as Json,
     })
-    .eq("id", params.run.id)
-    .eq("user_id", params.run.user_id)
-    .in("status", ["queued", "pending"]);
+    .eq("id", claimedRun.id)
+    .eq("user_id", claimedRun.user_id)
+    .eq("status", "processing");
 
   if (error) {
     throw new Error(error.message);
@@ -1291,7 +1626,9 @@ async function syncHostedUserQueue(params: {
   const [systemConfig, activeHostedUserCount, runRows] = await Promise.all([
     getHostedSystemConfig(params.supabase),
     getActiveHostedUserCount(params.supabase),
-    listHostedUserRuns(params.supabase, params.user.id),
+    listHostedUserRuns(params.supabase, params.user.id, {
+      includeDeleted: true,
+    }),
   ]);
 
   const processingRuns = runRows.filter((run) => run.status === "processing");
@@ -1384,7 +1721,9 @@ async function syncHostedUserQueue(params: {
     }
   }
 
-  const refreshedRuns = await listHostedUserRuns(params.supabase, params.user.id);
+  const refreshedRuns = await listHostedUserRuns(params.supabase, params.user.id, {
+    includeDeleted: true,
+  });
   await dispatchHostedQueuedRuns({
     supabase: params.supabase,
     userId: params.user.id,
@@ -1403,7 +1742,9 @@ export async function syncHostedQueueForUserId(params: {
   const [systemConfig, activeHostedUserCount, runRows] = await Promise.all([
     getHostedSystemConfig(params.supabase),
     getActiveHostedUserCount(params.supabase),
-    listHostedUserRuns(params.supabase, params.userId),
+    listHostedUserRuns(params.supabase, params.userId, {
+      includeDeleted: true,
+    }),
   ]);
 
   await dispatchHostedQueuedRuns({
@@ -1432,7 +1773,12 @@ export async function handleHostedFalWebhook(params: {
     (await getHostedRunByProviderRequestId(params.supabase, params.requestId));
 
   if (!run) {
-    throw new Error("The webhook referenced an unknown generation run.");
+    return {
+      ok: true,
+      userId: null,
+      runId: params.runId,
+      alreadyProcessed: true,
+    };
   }
 
   if (run.provider_request_id && run.provider_request_id !== params.requestId) {
@@ -2031,7 +2377,6 @@ export async function queueHostedGeneration(params: {
     ensureHostedAccount(params.supabase, params.user),
     getHostedSystemConfig(params.supabase),
   ]);
-  await assertHostedFolderExists(params.supabase, params.user.id, params.folderId);
   const enabledModelIds = normalizeStudioEnabledModelIds(account.enabled_model_ids);
 
   if (!enabledModelIds.includes(params.modelId)) {
@@ -2106,7 +2451,8 @@ export async function queueHostedGeneration(params: {
   const runInsert: Database["public"]["Tables"]["generation_runs"]["Row"] = {
     id: runId,
     user_id: params.user.id,
-    folder_id: params.folderId,
+    folder_id: null,
+    deleted_at: null,
     model_id: model.id,
     model_name: model.name,
     kind: model.kind,

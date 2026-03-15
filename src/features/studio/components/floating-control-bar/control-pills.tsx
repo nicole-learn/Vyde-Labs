@@ -9,9 +9,14 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import {
+  getPreferredStudioTextModelIdForFamily,
+  getStudioTextFamilyLabel,
+} from "../../studio-model-catalog";
 import type {
   StudioModelDefinition,
   StudioModelSection,
+  StudioTextModelFamilyId,
 } from "../../types";
 
 export interface ControlPillOption {
@@ -245,6 +250,28 @@ export function ModelSelectPill({
   const [open, setOpen] = useState(false);
   const selectedModel =
     models.find((entry) => entry.id === selectedModelId) ?? models[0];
+  const textFamilyOptions = Array.from(
+    new Set(
+      models
+        .map((entry) => entry.familyId)
+        .filter((familyId): familyId is StudioTextModelFamilyId => Boolean(familyId))
+    )
+  )
+    .sort((left, right) =>
+      getStudioTextFamilyLabel(left).localeCompare(getStudioTextFamilyLabel(right))
+    )
+    .map((familyId) => {
+      const familyModels = models.filter((entry) => entry.familyId === familyId);
+      return {
+        familyId,
+        label: getStudioTextFamilyLabel(familyId),
+        modelIds: familyModels.map((entry) => entry.id),
+      };
+    });
+  const selectedTextFamilyId =
+    selectedModel.kind === "text" ? selectedModel.familyId ?? null : null;
+  const selectedTextFamilyLabel =
+    selectedTextFamilyId ? getStudioTextFamilyLabel(selectedTextFamilyId) : null;
 
   return (
     <PillMenu
@@ -262,30 +289,55 @@ export function ModelSelectPill({
             kind={selectedModel.kind}
             className="size-3 shrink-0 opacity-50"
           />
-          <span className="truncate">{selectedModel.name}</span>
+          <span className="truncate">
+            {selectedTextFamilyLabel ?? selectedModel.name}
+          </span>
           <ChevronsUpDown className="size-4 text-muted-foreground" />
         </button>
       }
     >
       {sections.flatMap((section) =>
-        models
-          .filter((entry) => entry.section === section.id)
-          .map((entry) => {
-            const active = entry.id === selectedModelId;
-            return (
-              <PillOptionButton
-                key={entry.id}
-                active={active}
-                onClick={() => {
-                  onSelectModel(entry.id);
-                  setOpen(false);
-                }}
-              >
-                <ModelKindIcon kind={entry.kind} className="size-3.5 shrink-0" />
-                <span className="truncate">{entry.name}</span>
-              </PillOptionButton>
-            );
-          })
+        section.id === "text"
+          ? textFamilyOptions.map((entry) => {
+              const active = entry.familyId === selectedTextFamilyId;
+              const nextModelId =
+                models.find((model) => model.id === selectedModelId && model.familyId === entry.familyId)
+                  ?.id ??
+                getPreferredStudioTextModelIdForFamily(entry.familyId, models) ??
+                entry.modelIds[0];
+
+              return (
+                <PillOptionButton
+                  key={entry.familyId}
+                  active={active}
+                  onClick={() => {
+                    onSelectModel(nextModelId);
+                    setOpen(false);
+                  }}
+                >
+                  <ModelKindIcon kind="text" className="size-3.5 shrink-0" />
+                  <span className="truncate">{entry.label}</span>
+                </PillOptionButton>
+              );
+            })
+          : models
+              .filter((entry) => entry.section === section.id)
+              .map((entry) => {
+                const active = entry.id === selectedModelId;
+                return (
+                  <PillOptionButton
+                    key={entry.id}
+                    active={active}
+                    onClick={() => {
+                      onSelectModel(entry.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <ModelKindIcon kind={entry.kind} className="size-3.5 shrink-0" />
+                    <span className="truncate">{entry.name}</span>
+                  </PillOptionButton>
+                );
+              })
       )}
     </PillMenu>
   );

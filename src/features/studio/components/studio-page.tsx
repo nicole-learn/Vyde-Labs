@@ -227,6 +227,7 @@ export function StudioPage({
   const primaryGallery = (
     <StudioGallery
       allowDropMove={Boolean(studio.selectedFolderId)}
+      allRuns={studio.runs}
       dragImageRef={emptyDragImageRef}
       draggingItemIdSet={draggingItemIdSet}
       emptyStateActionLabel="Upload Assets"
@@ -265,6 +266,7 @@ export function StudioPage({
   const secondaryGallery = studio.selectedFolder ? (
     <StudioGallery
       allowDropMove
+      allRuns={studio.runs}
       dragImageRef={emptyDragImageRef}
       draggingItemIdSet={draggingItemIdSet}
       emptyStateActionLabel="Upload Assets"
@@ -326,6 +328,7 @@ export function StudioPage({
             onDropLibraryItemsToEndFrame={studio.dropLibraryItemsIntoEndFrame}
             onDropLibraryItemsToStartFrame={studio.dropLibraryItemsIntoStartFrame}
             onGenerate={studio.generate}
+            generatePending={studio.generatePending}
             onRemoveReference={studio.removeReference}
             onSavePrompt={studio.saveCurrentPromptAsTextItem}
             savePromptPending={studio.savePromptPending}

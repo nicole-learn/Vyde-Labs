@@ -91,6 +91,7 @@ function FolderRow({
 }: FolderRowProps) {
   const [dragOver, setDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const registerRow = useCallback(
     (node: HTMLDivElement | null) => {
       rowRef.current = node;
@@ -116,6 +117,7 @@ function FolderRow({
       onPointerDown={dragOverlay ? undefined : onPointerDown}
     >
       <button
+        ref={buttonRef}
         type="button"
         onClick={(event) => {
           if (dragOverlay) {
@@ -124,6 +126,10 @@ function FolderRow({
           }
 
           onClick();
+
+          if (event.detail > 0) {
+            buttonRef.current?.blur();
+          }
         }}
         onDragEnter={(event) => {
           if (!onDrop) return;
@@ -177,6 +183,7 @@ function FolderRow({
           </span>
 
           <FolderOptionsMenu
+            active={active}
             className={cn(
               "absolute right-2 top-1/2 -translate-y-1/2 transition-opacity duration-150",
               sortingActive

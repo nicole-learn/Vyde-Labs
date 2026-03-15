@@ -151,8 +151,35 @@ function serializeJson(value: unknown) {
   return JSON.stringify(value ?? null);
 }
 
+function ensureColumnExists(
+  db: Database.Database,
+  tableName: string,
+  columnName: string,
+  columnDefinition: string
+) {
+  const columns = db
+    .prepare(`pragma table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  db.exec(
+    `alter table ${tableName} add column ${columnName} ${columnDefinition}`
+  );
+}
+
 function buildLocalFileUrl(fileId: string) {
   return `/api/studio/local/files/${encodeURIComponent(fileId)}`;
+}
+
+function cloneClientSnapshot(snapshot: StudioWorkspaceSnapshot) {
+  const nextSnapshot = cloneSnapshot(snapshot);
+  nextSnapshot.generationRuns = nextSnapshot.generationRuns.filter(
+    (run) => !run.deletedAt
+  );
+  return nextSnapshot;
 }
 
 function getFileExtension(fileName: string) {
@@ -364,6 +391,7 @@ function createTables(db: Database.Database) {
       user_id text not null,
       workspace_id text not null,
       folder_id text,
+      deleted_at text,
       model_id text not null,
       model_name text not null,
       kind text not null,
@@ -414,6 +442,8 @@ function createTables(db: Database.Database) {
     create index if not exists generation_runs_workspace_status_queue_idx on generation_runs (workspace_id, status, queue_entered_at asc);
     create index if not exists generation_run_inputs_run_position_idx on generation_run_inputs (run_id, position asc);
   `);
+
+  ensureColumnExists(db, "generation_runs", "deleted_at", "text");
 }
 
 function persistSnapshot(db: Database.Database, revision: number, snapshot: StudioWorkspaceSnapshot) {
@@ -577,7 +607,7 @@ function persistSnapshot(db: Database.Database, revision: number, snapshot: Stud
     const insertRun = db.prepare(
       `
         insert into generation_runs (
-          id, user_id, workspace_id, folder_id, model_id, model_name, kind, provider,
+          id, user_id, workspace_id, folder_id, deleted_at, model_id, model_name, kind, provider,
           request_mode, status, prompt, created_at, queue_entered_at, started_at,
           completed_at, failed_at, cancelled_at, updated_at, summary, output_asset_id,
           preview_url, error_message, input_payload_json, input_settings_json,
@@ -585,7 +615,7 @@ function persistSnapshot(db: Database.Database, revision: number, snapshot: Stud
           estimated_credits, actual_credits, usage_snapshot_json, output_text,
           pricing_snapshot_json, dispatch_attempt_count, dispatch_lease_expires_at,
           can_cancel, draft_snapshot_json
-        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
     );
     for (const run of snapshot.generationRuns) {
@@ -594,6 +624,7 @@ function persistSnapshot(db: Database.Database, revision: number, snapshot: Stud
         run.userId,
         run.workspaceId,
         run.folderId,
+        run.deletedAt ?? null,
         run.modelId,
         run.modelName,
         run.kind,
@@ -731,6 +762,7 @@ function readSnapshotFromDb(db: Database.Database): LocalStoreBootstrap | null {
     user_id: string;
     workspace_id: string;
     folder_id: string | null;
+    deleted_at: string | null;
     model_id: string;
     model_name: string;
     kind: GenerationRun["kind"];
@@ -896,6 +928,7 @@ function readSnapshotFromDb(db: Database.Database): LocalStoreBootstrap | null {
       userId: run.user_id,
       workspaceId: run.workspace_id,
       folderId: run.folder_id,
+      deletedAt: run.deleted_at,
       modelId: run.model_id,
       modelName: run.model_name,
       kind: run.kind,
@@ -1053,17 +1086,54 @@ async function completeLocalRunFromProviderPayload(params: {
   run: GenerationRun;
   payload: Record<string, unknown>;
 }) {
-  const model = getStudioModelById(params.run.modelId);
-  const draft = hydrateDraft(params.run.draftSnapshot, model);
+  const currentRun = getLocalRunById(params.store, params.run.id);
+  if (!currentRun) {
+    return;
+  }
+
+  if (currentRun.deletedAt) {
+    params.store.snapshot = await purgeRunsFromLocalSnapshot({
+      snapshot: params.store.snapshot,
+      runIds: [currentRun.id],
+    });
+    commitSnapshot(params.store, params.store.snapshot, new Date().toISOString());
+    return;
+  }
+
+  const model = getStudioModelById(currentRun.modelId);
+  const draft = hydrateDraft(currentRun.draftSnapshot, model);
   const resolved = resolveStudioFalCompletedPayload({
-    modelId: params.run.modelId,
-    requestMode: params.run.requestMode,
+    modelId: currentRun.modelId,
+    requestMode: currentRun.requestMode,
     draft: toPersistedDraft(draft),
     payload: params.payload,
   });
   const finishedAt = new Date().toISOString();
+  const existingItem = findLocalGeneratedItemByRunId(
+    params.store.snapshot,
+    currentRun.id,
+    currentRun.outputAssetId
+  );
+
+  if (existingItem) {
+    if (currentRun.status === "completed" && currentRun.outputAssetId === existingItem.id) {
+      return;
+    }
+
+    markLocalRunCompleted({
+      store: params.store,
+      runId: currentRun.id,
+      outputAssetId: existingItem.id,
+      finishedAt,
+      outputText: resolved.outputText,
+      usageSnapshot: resolved.usageSnapshot,
+    });
+    commitSnapshot(params.store, params.store.snapshot, finishedAt);
+    return;
+  }
+
   const outputTitle =
-    params.run.prompt.trim().slice(0, 72) || `${params.run.modelName} output`;
+    currentRun.prompt.trim().slice(0, 72) || `${currentRun.modelName} output`;
   const nextItemId = createStudioId("asset");
   let outputRunFile: StudioRunFile | null = null;
   let thumbnailRunFile: StudioRunFile | null = null;
@@ -1078,16 +1148,16 @@ async function completeLocalRunFromProviderPayload(params: {
     const outputRunFileId = createStudioId("run-file");
     const fileName =
       resolved.outputFile.fileName ??
-      `${params.run.modelId}-${params.run.id}.${blob.type.split("/").pop() ?? "bin"}`;
+      `${currentRun.modelId}-${currentRun.id}.${blob.type.split("/").pop() ?? "bin"}`;
     const relativePath = path
       .join(
         "runs",
-        params.run.id,
+        currentRun.id,
         "outputs",
         `${outputRunFileId}-${sanitizeStorageFileName(fileName)}`
       )
       .replaceAll(path.sep, "/");
-    await fsPromises.mkdir(getLocalRunOutputDirectory(params.run.id), {
+    await fsPromises.mkdir(getLocalRunOutputDirectory(currentRun.id), {
       recursive: true,
     });
     await writeBlobToLocalStorageFile({
@@ -1097,8 +1167,8 @@ async function completeLocalRunFromProviderPayload(params: {
 
     outputRunFile = {
       id: outputRunFileId,
-      runId: params.run.id,
-      userId: params.run.userId,
+      runId: currentRun.id,
+      userId: currentRun.userId,
       fileRole: "output",
       sourceType: "generated",
       storageBucket: "local-fs",
@@ -1121,15 +1191,15 @@ async function completeLocalRunFromProviderPayload(params: {
       const thumbnail = createAudioThumbnailFile({
         itemId: nextItemId,
         title: outputTitle,
-        subtitle: params.run.summary,
-        accentSeed: params.run.id,
+        subtitle: currentRun.summary,
+        accentSeed: currentRun.id,
         thumbnailRunFileId,
       });
 
       thumbnailRunFile = {
         id: thumbnailRunFileId,
-        runId: params.run.id,
-        userId: params.run.userId,
+        runId: currentRun.id,
+        userId: currentRun.userId,
         fileRole: "thumbnail",
         sourceType: "generated",
         storageBucket: "local-fs",
@@ -1148,12 +1218,65 @@ async function completeLocalRunFromProviderPayload(params: {
     }
   }
 
+  const latestRun = getLocalRunById(params.store, currentRun.id);
+  if (!latestRun) {
+    await removeLocalStoredRunFiles(
+      [thumbnailRunFile, outputRunFile].filter(
+        (entry): entry is StudioRunFile => Boolean(entry)
+      )
+    );
+    return;
+  }
+
+  if (latestRun.deletedAt) {
+    await removeLocalStoredRunFiles(
+      [thumbnailRunFile, outputRunFile].filter(
+        (entry): entry is StudioRunFile => Boolean(entry)
+      )
+    );
+    params.store.snapshot = await purgeRunsFromLocalSnapshot({
+      snapshot: params.store.snapshot,
+      runIds: [latestRun.id],
+    });
+    commitSnapshot(params.store, params.store.snapshot, finishedAt);
+    return;
+  }
+
+  const latestExistingItem = findLocalGeneratedItemByRunId(
+    params.store.snapshot,
+    latestRun.id,
+    latestRun.outputAssetId
+  );
+
+  if (latestExistingItem) {
+    await removeLocalStoredRunFiles(
+      [thumbnailRunFile, outputRunFile].filter(
+        (entry): entry is StudioRunFile => Boolean(entry)
+      )
+    );
+
+    if (latestRun.status === "completed" && latestRun.outputAssetId === latestExistingItem.id) {
+      return;
+    }
+
+    markLocalRunCompleted({
+      store: params.store,
+      runId: latestRun.id,
+      outputAssetId: latestExistingItem.id,
+      finishedAt,
+      outputText: resolved.outputText,
+      usageSnapshot: resolved.usageSnapshot,
+    });
+    commitSnapshot(params.store, params.store.snapshot, finishedAt);
+    return;
+  }
+
   const nextItem: LibraryItem = {
     id: nextItemId,
-    userId: params.run.userId,
-    workspaceId: params.run.workspaceId,
+    userId: latestRun.userId,
+    workspaceId: latestRun.workspaceId,
     runFileId: outputRunFile?.id ?? null,
-    sourceRunId: params.run.id,
+    sourceRunId: latestRun.id,
     title: outputTitle,
     kind: resolved.outputKind,
     source: "generated",
@@ -1167,12 +1290,12 @@ async function completeLocalRunFromProviderPayload(params: {
     contentText: resolved.outputText,
     createdAt: finishedAt,
     updatedAt: finishedAt,
-    modelId: params.run.modelId,
-    runId: params.run.id,
-    provider: params.run.provider,
+    modelId: latestRun.modelId,
+    runId: latestRun.id,
+    provider: latestRun.provider,
     status: "ready",
-    prompt: params.run.prompt,
-    meta: `${params.run.modelName} • ${params.run.summary}`,
+    prompt: latestRun.prompt,
+    meta: `${latestRun.modelName} • ${latestRun.summary}`,
     mediaWidth: outputRunFile?.mediaWidth ?? null,
     mediaHeight: outputRunFile?.mediaHeight ?? null,
     mediaDurationSeconds: outputRunFile?.mediaDurationSeconds ?? null,
@@ -1182,7 +1305,7 @@ async function completeLocalRunFromProviderPayload(params: {
     storageBucket: outputRunFile?.storageBucket ?? "inline-text",
     storagePath: outputRunFile?.storagePath ?? null,
     thumbnailPath: thumbnailRunFile?.storagePath ?? null,
-    fileName: outputRunFile?.fileName ?? (resolved.outputKind === "text" ? `${params.run.id}.txt` : null),
+    fileName: outputRunFile?.fileName ?? (resolved.outputKind === "text" ? `${latestRun.id}.txt` : null),
     mimeType: outputRunFile?.mimeType ?? (resolved.outputKind === "text" ? "text/plain" : null),
     byteSize:
       outputRunFile?.fileSizeBytes ??
@@ -1191,25 +1314,14 @@ async function completeLocalRunFromProviderPayload(params: {
     errorMessage: null,
   };
 
-  const usageCost =
-    typeof resolved.usageSnapshot.cost === "number" ? resolved.usageSnapshot.cost : null;
-  const updatedRuns: GenerationRun[] = params.store.snapshot.generationRuns.map((entry) =>
-    entry.id === params.run.id
-      ? ({
-          ...entry,
-          status: "completed",
-          providerStatus: "completed",
-          outputAssetId: nextItem.id,
-          actualCostUsd: usageCost ?? entry.estimatedCostUsd,
-          actualCredits: entry.estimatedCredits,
-          completedAt: finishedAt,
-          updatedAt: finishedAt,
-          canCancel: false,
-          outputText: resolved.outputText,
-          usageSnapshot: resolved.usageSnapshot,
-        } satisfies GenerationRun)
-      : entry
-  );
+  markLocalRunCompleted({
+    store: params.store,
+    runId: latestRun.id,
+    outputAssetId: nextItem.id,
+    finishedAt,
+    outputText: resolved.outputText,
+    usageSnapshot: resolved.usageSnapshot,
+  });
 
   params.store.snapshot = {
     ...params.store.snapshot,
@@ -1220,21 +1332,34 @@ async function completeLocalRunFromProviderPayload(params: {
       ),
       ...params.store.snapshot.runFiles,
     ],
-    generationRuns: updatedRuns,
   };
   commitSnapshot(params.store, params.store.snapshot, finishedAt);
 }
 
-function failLocalRun(params: {
+async function failLocalRun(params: {
   store: LocalStore;
   runId: string;
   errorMessage: string;
 }) {
+  const currentRun = getLocalRunById(params.store, params.runId);
+  if (!currentRun) {
+    return;
+  }
+
+  if (currentRun.deletedAt) {
+    params.store.snapshot = await purgeRunsFromLocalSnapshot({
+      snapshot: params.store.snapshot,
+      runIds: [currentRun.id],
+    });
+    commitSnapshot(params.store, params.store.snapshot, new Date().toISOString());
+    return;
+  }
+
   const finishedAt = new Date().toISOString();
   params.store.snapshot = {
     ...params.store.snapshot,
     generationRuns: params.store.snapshot.generationRuns.map((entry) =>
-      entry.id === params.runId
+      entry.id === currentRun.id
         ? {
             ...entry,
             status: "failed",
@@ -1288,10 +1413,12 @@ async function dispatchLocalRun(params: {
       throw new Error(`Add your ${model.providerLabel} API key before generating locally.`);
     }
 
+    const inputs = await loadLocalRunInputFiles(params.store, params.run);
     const result = await generateStudioTextProviderPayload({
       modelId: params.run.modelId,
       prompt: draft.prompt,
       providerApiKey,
+      inputs,
     });
     await completeLocalRunFromProviderPayload({
       store: params.store,
@@ -1347,7 +1474,7 @@ async function syncLocalQueue(store: LocalStore, providerSettings: StudioProvide
       if (model.kind === "text" && model.provider !== "fal") {
         const startedAt = run.startedAt ? Date.parse(run.startedAt) : Date.now();
         if (Date.now() - startedAt > 120_000) {
-          failLocalRun({
+          await failLocalRun({
             store,
             runId: run.id,
             errorMessage:
@@ -1363,7 +1490,7 @@ async function syncLocalQueue(store: LocalStore, providerSettings: StudioProvide
       ).trim();
 
       if (!providerRequestId || !providerEndpointId) {
-        failLocalRun({
+        await failLocalRun({
           store,
           runId: run.id,
           errorMessage:
@@ -1445,7 +1572,7 @@ async function syncLocalQueue(store: LocalStore, providerSettings: StudioProvide
         providerSettings,
       });
     } catch (error) {
-      failLocalRun({
+      await failLocalRun({
         store,
         runId: run.id,
         errorMessage:
@@ -1515,7 +1642,7 @@ function getStore() {
 function cloneLocalResponse(store: LocalStore) {
   return {
     revision: store.revision,
-    snapshot: cloneSnapshot(store.snapshot),
+    snapshot: cloneClientSnapshot(store.snapshot),
   };
 }
 
@@ -1555,7 +1682,7 @@ export async function getLocalBootstrapPayload(providerSettings: StudioProviderS
     kind: "bootstrap" as const,
     revision: store.revision,
     syncIntervalMs: LOCAL_SYNC_INTERVAL_MS,
-    snapshot: cloneSnapshot(store.snapshot),
+    snapshot: cloneClientSnapshot(store.snapshot),
   };
 }
 
@@ -1577,7 +1704,7 @@ export async function getLocalSyncPayload(
     kind: sinceRevision === null ? ("bootstrap" as const) : ("refresh" as const),
     revision: store.revision,
     syncIntervalMs: LOCAL_SYNC_INTERVAL_MS,
-    snapshot: cloneSnapshot(store.snapshot),
+    snapshot: cloneClientSnapshot(store.snapshot),
   };
 }
 
@@ -1623,6 +1750,111 @@ async function removeLocalStoredRunFiles(runFiles: StudioRunFile[]) {
         .catch(() => undefined);
     })
   );
+}
+
+function getLocalRunById(store: LocalStore, runId: string) {
+  return store.snapshot.generationRuns.find((run) => run.id === runId) ?? null;
+}
+
+function findLocalGeneratedItemByRunId(
+  snapshot: StudioWorkspaceSnapshot,
+  runId: string,
+  preferredItemId: string | null
+) {
+  if (preferredItemId) {
+    const preferredItem =
+      snapshot.libraryItems.find((item) => item.id === preferredItemId) ?? null;
+
+    if (preferredItem?.source === "generated") {
+      return preferredItem;
+    }
+  }
+
+  return (
+    snapshot.libraryItems.find(
+      (item) =>
+        item.source === "generated" &&
+        (item.sourceRunId === runId || item.runId === runId)
+    ) ?? null
+  );
+}
+
+function markLocalRunCompleted(params: {
+  store: LocalStore;
+  runId: string;
+  outputAssetId: string;
+  finishedAt: string;
+  outputText: string | null;
+  usageSnapshot: Record<string, unknown>;
+}) {
+  const usageCost =
+    typeof params.usageSnapshot.cost === "number" ? params.usageSnapshot.cost : null;
+
+  params.store.snapshot = {
+    ...params.store.snapshot,
+    generationRuns: params.store.snapshot.generationRuns.map((entry) =>
+      entry.id === params.runId
+        ? ({
+            ...entry,
+            status: "completed",
+            providerStatus: "completed",
+            outputAssetId: params.outputAssetId,
+            actualCostUsd: usageCost ?? entry.estimatedCostUsd,
+            actualCredits: entry.estimatedCredits,
+            completedAt: params.finishedAt,
+            updatedAt: params.finishedAt,
+            canCancel: false,
+            outputText: params.outputText,
+            usageSnapshot: params.usageSnapshot,
+          } satisfies GenerationRun)
+        : entry
+    ),
+  };
+}
+
+async function purgeRunsFromLocalSnapshot(params: {
+  snapshot: StudioWorkspaceSnapshot;
+  runIds: string[];
+}) {
+  const runIdSet = new Set(params.runIds);
+  const targetRuns = params.snapshot.generationRuns.filter((run) => runIdSet.has(run.id));
+
+  if (targetRuns.length === 0) {
+    return params.snapshot;
+  }
+
+  const outputAssetIdSet = new Set(
+    targetRuns
+      .map((run) => run.outputAssetId)
+      .filter((value): value is string => Boolean(value))
+  );
+  const generatedItems = params.snapshot.libraryItems.filter(
+    (item) =>
+      outputAssetIdSet.has(item.id) ||
+      (item.sourceRunId ? runIdSet.has(item.sourceRunId) : false) ||
+      (item.runId ? runIdSet.has(item.runId) : false)
+  );
+  const deletedRunFiles = collectLocalRunFilesForRemovedItems({
+    snapshot: params.snapshot,
+    items: generatedItems,
+    runIds: params.runIds,
+  });
+  const deletedItemIdSet = new Set(generatedItems.map((item) => item.id));
+  const deletedRunFileIdSet = new Set(deletedRunFiles.map((runFile) => runFile.id));
+
+  const nextSnapshot = {
+    ...params.snapshot,
+    generationRuns: params.snapshot.generationRuns.filter((run) => !runIdSet.has(run.id)),
+    libraryItems: params.snapshot.libraryItems.filter(
+      (item) => !deletedItemIdSet.has(item.id)
+    ),
+    runFiles: params.snapshot.runFiles.filter(
+      (runFile) => !deletedRunFileIdSet.has(runFile.id)
+    ),
+  };
+
+  await removeLocalStoredRunFiles(deletedRunFiles);
+  return nextSnapshot;
 }
 
 export async function mutateLocalSnapshot(
@@ -1760,34 +1992,37 @@ export async function mutateLocalSnapshot(
     case "delete_runs": {
       const runIdSet = new Set(mutation.runIds);
       const targetRuns = snapshot.generationRuns.filter((run) => runIdSet.has(run.id));
-      const outputAssetIdSet = new Set(
-        targetRuns
-          .map((run) => run.outputAssetId)
-          .filter((value): value is string => Boolean(value))
-      );
-      const generatedItems = snapshot.libraryItems.filter(
-        (item) =>
-          outputAssetIdSet.has(item.id) ||
-          (item.sourceRunId ? runIdSet.has(item.sourceRunId) : false) ||
-          (item.runId ? runIdSet.has(item.runId) : false)
-      );
-      const deletedRunFiles = collectLocalRunFilesForRemovedItems({
-        snapshot,
-        items: generatedItems,
-        runIds: mutation.runIds,
-      });
-      const deletedItemIdSet = new Set(generatedItems.map((item) => item.id));
-      const deletedRunFileIdSet = new Set(deletedRunFiles.map((runFile) => runFile.id));
+      const deletedAt = new Date().toISOString();
+      const processingRunIds = targetRuns
+        .filter((run) => run.status === "processing")
+        .map((run) => run.id);
+      const hardDeleteRunIds = targetRuns
+        .filter((run) => run.status !== "processing")
+        .map((run) => run.id);
 
-      snapshot.generationRuns = snapshot.generationRuns.filter((run) => !runIdSet.has(run.id));
-      snapshot.libraryItems = snapshot.libraryItems.filter(
-        (item) => !deletedItemIdSet.has(item.id)
-      );
-      snapshot.runFiles = snapshot.runFiles.filter(
-        (runFile) => !deletedRunFileIdSet.has(runFile.id)
-      );
+      if (processingRunIds.length > 0) {
+        const processingRunIdSet = new Set(processingRunIds);
+        snapshot.generationRuns = snapshot.generationRuns.map((run) =>
+          processingRunIdSet.has(run.id)
+            ? {
+                ...run,
+                deletedAt,
+                updatedAt: deletedAt,
+                canCancel: false,
+              }
+            : run
+        );
+      }
 
-      await removeLocalStoredRunFiles(deletedRunFiles);
+      if (hardDeleteRunIds.length > 0) {
+        Object.assign(
+          snapshot,
+          await purgeRunsFromLocalSnapshot({
+            snapshot,
+            runIds: hardDeleteRunIds,
+          })
+        );
+      }
       break;
     }
     case "update_text_item": {
@@ -1892,7 +2127,6 @@ export async function queueLocalGeneration(params: {
 }) {
   const store = getStore();
   const snapshot = cloneSnapshot(store.snapshot);
-  assertLocalFolderExists(snapshot, params.folderId);
   const model = getStudioModelById(params.modelId);
   const enabledModelIds = normalizeStudioEnabledModelIds(
     snapshot.modelConfiguration.enabledModelIds
@@ -1943,7 +2177,7 @@ export async function queueLocalGeneration(params: {
     id: runId,
     userId: snapshot.profile.id,
     workspaceId: snapshot.folders[0]?.workspaceId ?? "workspace-local",
-    folderId: params.folderId,
+    folderId: null,
     modelId: model.id,
     modelName: model.name,
     kind: model.kind,

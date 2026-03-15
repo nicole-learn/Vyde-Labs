@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { LibraryItem } from "../../types";
 import {
+  ASSET_DETAIL_DIALOG_LAYER_CLASS,
+  ASSET_DETAIL_INFO_PANEL_CLASS_NAME,
   ActionButton,
   buildAssetInfoRows,
   copyTextToClipboard,
@@ -42,7 +44,7 @@ function MediaInfoPanel({
     item.source === "generated" ? item.prompt.trim() : item.title.trim();
 
   return (
-    <aside className="flex min-h-0 flex-col bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl">
+    <aside className={ASSET_DETAIL_INFO_PANEL_CLASS_NAME}>
       <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-5">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -131,7 +133,8 @@ export function MediaAssetDialog({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[90] bg-black/50 p-0",
+        "fixed inset-0 bg-black/50 p-0",
+        ASSET_DETAIL_DIALOG_LAYER_CLASS,
         item.kind === "video"
           ? "supports-backdrop-filter:backdrop-blur-none"
           : "supports-backdrop-filter:backdrop-blur-sm"

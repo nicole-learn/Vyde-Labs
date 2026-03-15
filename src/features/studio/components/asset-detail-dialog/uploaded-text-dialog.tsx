@@ -9,8 +9,10 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { cn } from "@/lib/cn";
 import type { LibraryItem } from "../../types";
 import {
+  ASSET_DETAIL_DIALOG_LAYER_CLASS,
   ActionButton,
   copyTextToClipboard,
   IconButton,
@@ -50,7 +52,10 @@ export function UploadedTextDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[90] bg-black/50 supports-backdrop-filter:backdrop-blur-sm"
+      className={cn(
+        "fixed inset-0 bg-black/50 supports-backdrop-filter:backdrop-blur-sm",
+        ASSET_DETAIL_DIALOG_LAYER_CLASS
+      )}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();

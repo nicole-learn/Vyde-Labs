@@ -9,8 +9,11 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { cn } from "@/lib/cn";
 import type { LibraryItem } from "../../types";
 import {
+  ASSET_DETAIL_DIALOG_LAYER_CLASS,
+  ASSET_DETAIL_INFO_PANEL_CLASS_NAME,
   ActionButton,
   copyTextToClipboard,
   getLibraryItemModelName,
@@ -39,7 +42,12 @@ function GeneratedTextInfoPanel({
   const modelName = getLibraryItemModelName(item) ?? item.title;
 
   return (
-    <div className="stable-scrollbar hidden h-[85vh] min-h-[30rem] max-h-[50rem] w-[360px] shrink-0 flex-col overflow-y-auto rounded-2xl bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl lg:flex">
+    <div
+      className={cn(
+        ASSET_DETAIL_INFO_PANEL_CLASS_NAME,
+        "stable-scrollbar hidden w-[360px] shrink-0 rounded-2xl lg:flex"
+      )}
+    >
       <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-5">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground">{modelName}</h2>
@@ -50,7 +58,7 @@ function GeneratedTextInfoPanel({
         </IconButton>
       </div>
 
-      <div className="flex-1 space-y-4 px-5 pb-5 pt-3">
+      <div className="stable-scrollbar flex-1 space-y-4 overflow-y-auto px-5 pb-5 pt-3">
         <div>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-medium text-muted-foreground">Prompt</p>
@@ -136,7 +144,10 @@ export function GeneratedTextDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[90] bg-black/50 supports-backdrop-filter:backdrop-blur-sm"
+      className={cn(
+        "fixed inset-0 bg-black/50 supports-backdrop-filter:backdrop-blur-sm",
+        ASSET_DETAIL_DIALOG_LAYER_CLASS
+      )}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           onClose();

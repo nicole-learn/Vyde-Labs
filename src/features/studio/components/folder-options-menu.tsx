@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/cn";
 
 interface FolderOptionsMenuProps {
+  active?: boolean;
   className?: string;
   folderName: string;
   hasItems: boolean;
@@ -67,6 +68,7 @@ function MenuItem({
 }
 
 export function FolderOptionsMenu({
+  active = false,
   className,
   folderName,
   hasItems,
@@ -78,6 +80,7 @@ export function FolderOptionsMenu({
 }: FolderOptionsMenuProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +88,7 @@ export function FolderOptionsMenu({
     const handlePointerDown = (event: MouseEvent) => {
       if (menuRef.current?.contains(event.target as Node)) return;
       setOpen(false);
+      triggerRef.current?.blur();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -111,15 +115,31 @@ export function FolderOptionsMenu({
     <div className={className} data-folder-menu-root>
       <div ref={menuRef} className="relative inline-flex items-center justify-center">
         <button
+          ref={triggerRef}
           type="button"
           onPointerDown={(event) => {
             event.stopPropagation();
           }}
           onClick={(event) => {
             event.stopPropagation();
-            setOpen((current) => !current);
+            const pointerTriggered = event.detail > 0;
+
+            setOpen((current) => {
+              const next = !current;
+
+              if (!next && pointerTriggered) {
+                triggerRef.current?.blur();
+              }
+
+              return next;
+            });
           }}
-          className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-white/[0.08] hover:text-foreground"
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-full transition",
+            active
+              ? "text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
+              : "text-muted-foreground hover:bg-white/[0.08] hover:text-foreground"
+          )}
           aria-label={`Open ${folderName} options`}
           aria-expanded={open}
           aria-haspopup="menu"

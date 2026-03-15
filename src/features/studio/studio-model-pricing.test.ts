@@ -83,7 +83,7 @@ describe("studio-model-pricing", () => {
     const quote = quoteStudioDraftPricing(model, createDraft());
 
     expect(quote.apiCostUsd).toBe(0.12);
-    expect(quote.billedCredits).toBe(13.8);
+    expect(quote.billedCredits).toBe(1.4);
     expect(quote.pricingSnapshot.pricing_type).toBe("fixed");
   });
 
@@ -99,7 +99,21 @@ describe("studio-model-pricing", () => {
 
     expect(
       quoteStudioDraftCredits(model, createDraft({ resolution: "2048" }))
-    ).toBe(13.8);
+    ).toBe(1.4);
+  });
+
+  it("rounds quoted credits up to the next tenth", () => {
+    const model = createModel({
+      type: "resolution",
+      baseCostUsd: 0.08,
+      resolutionMultipliers: {
+        "1024": 1,
+      },
+    });
+
+    expect(
+      quoteStudioDraftCredits(model, createDraft({ resolution: "1024" }))
+    ).toBe(1.0);
   });
 
   it("quotes video models differently depending on audio settings", () => {

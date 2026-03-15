@@ -1,4 +1,5 @@
 import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import type { StudioFalInputFile } from "@/server/fal/studio-fal";
 import type {
   StudioModelDefinition,
   StudioProviderKeyId,
@@ -70,10 +71,126 @@ async function parseErrorMessage(response: Response) {
   }
 }
 
+async function blobToBase64(blob: Blob) {
+  return Buffer.from(await blob.arrayBuffer()).toString("base64");
+}
+
+async function buildOpenAiInputContent(
+  prompt: string,
+  inputs: StudioFalInputFile[]
+) {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "input_text",
+      text: prompt,
+    },
+  ];
+
+  for (const input of inputs) {
+    if (input.kind === "image") {
+      const mimeType = input.mimeType?.trim() || "image/jpeg";
+      const base64 = await blobToBase64(input.file);
+      content.push({
+        type: "input_text",
+        text: `Reference image: ${input.title}`,
+      });
+      content.push({
+        type: "input_image",
+        image_url: `data:${mimeType};base64,${base64}`,
+      });
+      continue;
+    }
+
+    if (input.kind === "video") {
+      content.push({
+        type: "input_text",
+        text: `Reference video: ${input.title}. Use the representative frame attached with this request as the video context.`,
+      });
+    }
+  }
+
+  return content;
+}
+
+async function buildAnthropicMessageContent(
+  prompt: string,
+  inputs: StudioFalInputFile[]
+) {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: prompt,
+    },
+  ];
+
+  for (const input of inputs) {
+    if (input.kind === "image") {
+      const mediaType = input.mimeType?.trim() || "image/jpeg";
+      const base64 = await blobToBase64(input.file);
+      content.push({
+        type: "text",
+        text: `Reference image: ${input.title}`,
+      });
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mediaType,
+          data: base64,
+        },
+      });
+      continue;
+    }
+
+    if (input.kind === "video") {
+      content.push({
+        type: "text",
+        text: `Reference video: ${input.title}. Use the representative frame attached with this request as the video context.`,
+      });
+    }
+  }
+
+  return content;
+}
+
+async function buildGeminiContentParts(
+  prompt: string,
+  inputs: StudioFalInputFile[]
+) {
+  const parts: Array<Record<string, unknown>> = [
+    {
+      text: prompt,
+    },
+  ];
+
+  for (const input of inputs) {
+    const mimeType =
+      input.mimeType?.trim() ||
+      (input.kind === "video"
+        ? "video/mp4"
+        : input.kind === "image"
+          ? "image/jpeg"
+          : "application/octet-stream");
+
+    parts.push({
+      text: `Reference ${input.kind}: ${input.title}`,
+    });
+    parts.push({
+      inlineData: {
+        mimeType,
+        data: await blobToBase64(input.file),
+      },
+    });
+  }
+
+  return parts;
+}
+
 async function generateOpenAiText(params: {
   model: StudioModelDefinition;
   apiKey: string;
   prompt: string;
+  inputs: StudioFalInputFile[];
 }) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -83,7 +200,12 @@ async function generateOpenAiText(params: {
     },
     body: JSON.stringify({
       model: params.model.apiModelId,
-      input: params.prompt,
+      input: [
+        {
+          role: "user",
+          content: await buildOpenAiInputContent(params.prompt, params.inputs),
+        },
+      ],
       max_output_tokens: params.model.maxOutputTokens,
     }),
     cache: "no-store",
@@ -111,6 +233,7 @@ async function generateAnthropicText(params: {
   model: StudioModelDefinition;
   apiKey: string;
   prompt: string;
+  inputs: StudioFalInputFile[];
 }) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -125,7 +248,7 @@ async function generateAnthropicText(params: {
       messages: [
         {
           role: "user",
-          content: params.prompt,
+          content: await buildAnthropicMessageContent(params.prompt, params.inputs),
         },
       ],
     }),
@@ -159,6 +282,7 @@ async function generateGeminiText(params: {
   model: StudioModelDefinition;
   apiKey: string;
   prompt: string;
+  inputs: StudioFalInputFile[];
 }) {
   const url = new URL(
     `https://generativelanguage.googleapis.com/v1beta/models/${params.model.apiModelId}:generateContent`
@@ -173,7 +297,7 @@ async function generateGeminiText(params: {
     body: JSON.stringify({
       contents: [
         {
-          parts: [{ text: params.prompt }],
+          parts: await buildGeminiContentParts(params.prompt, params.inputs),
         },
       ],
       generationConfig: {
@@ -214,8 +338,10 @@ export async function generateStudioTextProviderPayload(params: {
   modelId: string;
   prompt: string;
   providerApiKey: string;
+  inputs?: StudioFalInputFile[];
 }) {
   const model = getTextModel(params.modelId);
+  const inputs = params.inputs ?? [];
 
   switch (model.provider) {
     case "openai":
@@ -223,18 +349,21 @@ export async function generateStudioTextProviderPayload(params: {
         model,
         apiKey: params.providerApiKey,
         prompt: params.prompt,
+        inputs,
       });
     case "anthropic":
       return generateAnthropicText({
         model,
         apiKey: params.providerApiKey,
         prompt: params.prompt,
+        inputs,
       });
     case "google":
       return generateGeminiText({
         model,
         apiKey: params.providerApiKey,
         prompt: params.prompt,
+        inputs,
       });
     default:
       throw new Error("This text model is not configured for a direct provider.");

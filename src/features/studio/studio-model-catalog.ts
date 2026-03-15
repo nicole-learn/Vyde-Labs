@@ -83,7 +83,9 @@ function createTextModel(
     requestMode: "chat",
     promptPlaceholder: "Ask anything...",
     supportsNegativePrompt: false,
-    supportsReferences: false,
+    supportsReferences: true,
+    maxReferenceFiles: 6,
+    acceptedReferenceKinds: ["image", "video"],
     defaultDraft: {
       ...DEFAULT_TEXT_DRAFT,
       maxTokens: config.maxOutputTokens ?? DEFAULT_TEXT_DRAFT.maxTokens,
@@ -834,6 +836,39 @@ export const STUDIO_TEXT_MODEL_FAMILIES = [
     STUDIO_MODEL_CATALOG.filter((model) => model.familyId === "gemini")
   ),
 ].sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" }));
+
+export const STUDIO_PREFERRED_TEXT_MODEL_BY_FAMILY: Record<
+  StudioTextModelFamilyId,
+  string
+> = {
+  chatgpt: "gpt-5.2",
+  claude: "claude-sonnet-4",
+  gemini: "gemini-3-flash",
+};
+
+export function getStudioTextFamilyLabel(familyId: StudioTextModelFamilyId) {
+  return (
+    STUDIO_TEXT_MODEL_FAMILIES.find((family) => family.id === familyId)?.label ??
+    familyId
+  );
+}
+
+export function getPreferredStudioTextModelIdForFamily(
+  familyId: StudioTextModelFamilyId,
+  availableModels: StudioModelDefinition[] = STUDIO_MODEL_CATALOG
+) {
+  const familyModels = availableModels.filter((model) => model.familyId === familyId);
+  if (familyModels.length === 0) {
+    return null;
+  }
+
+  const preferredId = STUDIO_PREFERRED_TEXT_MODEL_BY_FAMILY[familyId];
+  return (
+    familyModels.find((model) => model.id === preferredId)?.id ??
+    familyModels[0]?.id ??
+    null
+  );
+}
 
 export function getStudioModelIds() {
   return STUDIO_MODEL_CATALOG.map((model) => model.id);
