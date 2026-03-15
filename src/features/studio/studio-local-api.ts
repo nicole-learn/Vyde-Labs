@@ -1,4 +1,5 @@
 import type {
+  GenerationRun,
   PersistedStudioDraft,
   StudioReferenceInputKind,
   StudioWorkspaceSnapshot,
@@ -8,6 +9,13 @@ import type {
 export interface LocalStudioSnapshotResponse {
   revision: number;
   snapshot: StudioWorkspaceSnapshot;
+}
+
+export interface LocalStudioGenerateResponse {
+  kind: "queued";
+  clientRequestId: string | null;
+  revision: number;
+  run: GenerationRun;
 }
 
 export type LocalStudioSyncResponse =

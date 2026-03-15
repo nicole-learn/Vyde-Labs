@@ -55,7 +55,7 @@ function createTextItem(
     title: "Alpha note",
     kind: "text",
     source,
-    role: source === "generated" ? "generated_output" : "uploaded_source",
+    role: source === "generated" ? "generated_output" : "text_note",
     previewUrl: null,
     thumbnailUrl: null,
     contentText: "This is a plain text card in the gallery.",
@@ -221,6 +221,75 @@ describe("StudioGallery text cards", () => {
 
     expect(cardBody).toHaveClass("p-4");
     expect(cardBody).not.toHaveClass("pt-12");
+  });
+
+  it("renders generated text cards with output first and prompt context", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 960,
+    });
+
+    render(
+      <StudioGallery
+        emptyStateLabel="No assets"
+        items={[
+          createTextItem("generated", {
+            id: "item-generated",
+            title: "Generated answer",
+            contentText: "Here is the generated answer body.",
+            prompt: "Write a short answer about honey.",
+          }),
+        ]}
+        selectedItemIdSet={new Set()}
+        selectionModeEnabled={false}
+        sizeLevel={2}
+        onDeleteItem={vi.fn()}
+        onDownloadItem={vi.fn()}
+        onOpenItem={vi.fn()}
+        onReuseItem={vi.fn()}
+        onToggleItemSelection={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("Output")).toBeInTheDocument();
+    expect(screen.getByText("Here is the generated answer body.")).toBeInTheDocument();
+    expect(screen.getByText("Prompt")).toBeInTheDocument();
+    expect(screen.getByText("Write a short answer about honey.")).toBeInTheDocument();
+  });
+
+  it("uses role-specific reuse copy for prompt notes and generated outputs", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 960,
+    });
+
+    render(
+      <StudioGallery
+        emptyStateLabel="No assets"
+        items={[
+          createTextItem("uploaded", {
+            id: "item-note",
+            title: "Prompt note",
+          }),
+          createTextItem("generated", {
+            id: "item-generated",
+            title: "Generated answer",
+            prompt: "Write an answer",
+          }),
+        ]}
+        selectedItemIdSet={new Set()}
+        selectionModeEnabled={false}
+        sizeLevel={2}
+        onDeleteItem={vi.fn()}
+        onDownloadItem={vi.fn()}
+        onOpenItem={vi.fn()}
+        onReuseItem={vi.fn()}
+        onToggleItemSelection={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByTitle("Copy note to prompt bar")).toBeInTheDocument();
+    expect(screen.getByTitle("Restore run context")).toBeInTheDocument();
   });
 
   it("shows a delete control for processing runs", async () => {

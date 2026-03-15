@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { ModalShell } from "./modal-shell";
 
 interface FolderDialogProps {
   errorMessage?: string | null;
@@ -56,69 +57,64 @@ export function FolderDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/72 p-4 backdrop-blur-sm"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !saving) {
-          onOpenChange(false);
-        }
-      }}
+    <ModalShell
+      open={open}
+      title={title}
+      onClose={saving ? () => {} : () => onOpenChange(false)}
+      hideHeader
+      panelClassName="w-[min(92vw,21rem)] max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-background/90 p-0 shadow-2xl backdrop-blur-2xl"
+      contentClassName="px-0 py-0"
     >
-      <div
-        className="w-[min(92vw,21rem)] max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-background/90 p-0 shadow-2xl backdrop-blur-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex flex-col items-center px-5 pb-5 pt-6 text-center">
-          <div className="text-[17px] font-semibold tracking-tight text-foreground">
-            {title}
-          </div>
-
-          <div className="mt-4 w-full space-y-3">
-            <input
-              ref={inputRef}
-              placeholder="Folder name"
-              value={value}
-              onChange={(event) => onValueChange(event.target.value)}
-              disabled={saving}
-              className="h-9 w-full rounded-[8px] border-0 bg-foreground/5 px-2.5 text-[14px] font-medium text-foreground shadow-inner outline-none transition-colors placeholder:font-normal placeholder:text-muted-foreground/60 focus:bg-foreground/10"
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !saving) {
-                  event.preventDefault();
-                  void onSubmit();
-                }
-              }}
-            />
-
-            {errorMessage ? (
-              <p className="text-left text-[12px] text-destructive">
-                {errorMessage}
-              </p>
-            ) : null}
-          </div>
+      <div className="flex flex-col items-center px-5 pb-5 pt-6 text-center">
+        <div className="text-[17px] font-semibold tracking-tight text-foreground">
+          {title}
         </div>
 
-        <div className="grid h-11 grid-cols-2 border-t border-white/10">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
+        <div className="mt-4 w-full space-y-3">
+          <input
+            ref={inputRef}
+            placeholder="Folder name"
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
             disabled={saving}
-            className="flex items-center justify-center border-r border-white/10 text-[15px] text-foreground transition-colors hover:bg-foreground/5 active:bg-foreground/10 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void onSubmit();
+            className="h-9 w-full rounded-[8px] border-0 bg-foreground/5 px-2.5 text-[14px] font-medium text-foreground shadow-inner outline-none transition-colors placeholder:font-normal placeholder:text-muted-foreground/60 focus:bg-foreground/10"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !saving) {
+                event.preventDefault();
+                void onSubmit();
+              }
             }}
-            disabled={saving}
-            className="flex items-center justify-center text-[15px] font-semibold text-primary transition-colors hover:bg-primary/5 active:bg-primary/10 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
-            {saving ? (mode === "rename" ? "Saving..." : "Creating...") : submitLabel}
-          </button>
+          />
+
+          {errorMessage ? (
+            <p className="text-left text-[12px] text-destructive">
+              {errorMessage}
+            </p>
+          ) : null}
         </div>
       </div>
-    </div>
+
+      <div className="grid h-11 grid-cols-2 border-t border-white/10">
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          disabled={saving}
+          className="flex items-center justify-center border-r border-white/10 text-[15px] text-foreground transition-colors hover:bg-foreground/5 active:bg-foreground/10 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void onSubmit();
+          }}
+          disabled={saving}
+          className="flex items-center justify-center text-[15px] font-semibold text-primary transition-colors hover:bg-primary/5 active:bg-primary/10 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+          {saving ? (mode === "rename" ? "Saving..." : "Creating...") : submitLabel}
+        </button>
+      </div>
+    </ModalShell>
   );
 }

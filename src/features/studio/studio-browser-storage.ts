@@ -6,14 +6,6 @@ const STORAGE_KEYS = {
   providerSettings: "tryplayground.studio.providerSettings",
 } as const;
 
-const LEGACY_STORAGE_KEYS = {
-  providerSettings: "tryplayground.studio.settings",
-} as const;
-
-function getLocalStorage() {
-  return typeof window === "undefined" ? null : window.localStorage;
-}
-
 function getSessionStorage() {
   return typeof window === "undefined" ? null : window.sessionStorage;
 }
@@ -56,13 +48,7 @@ function removeValue(storage: Storage | null, key: string) {
   }
 }
 
-function removeLegacyProviderSettings() {
-  removeValue(getLocalStorage(), LEGACY_STORAGE_KEYS.providerSettings);
-}
-
 export function loadStoredProviderSettings(): StudioProviderSettings | null {
-  removeLegacyProviderSettings();
-
   const value = readJson<Partial<StudioProviderSettings>>(
     getSessionStorage(),
     STORAGE_KEYS.providerSettings
@@ -106,8 +92,6 @@ export function loadStoredProviderSettings(): StudioProviderSettings | null {
 }
 
 export function saveStoredProviderSettings(value: StudioProviderSettings) {
-  removeLegacyProviderSettings();
-
   const falApiKey = (value.falApiKey ?? "").trim();
   const openaiApiKey = (value.openaiApiKey ?? "").trim();
   const anthropicApiKey = (value.anthropicApiKey ?? "").trim();

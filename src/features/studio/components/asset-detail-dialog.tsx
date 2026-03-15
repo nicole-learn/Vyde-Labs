@@ -6,6 +6,7 @@ import { GeneratedTextDialog } from "./asset-detail-dialog/generated-text-dialog
 import { MediaAssetDialog } from "./asset-detail-dialog/media-asset-dialog";
 import { formatAssetCreatedAt } from "./asset-detail-dialog/asset-detail-shared";
 import { UploadedTextDialog } from "./asset-detail-dialog/uploaded-text-dialog";
+import { isGeneratedTextLibraryItem } from "../studio-library-item-behavior";
 import type { LibraryItem } from "../types";
 
 interface AssetDetailDialogProps {
@@ -33,17 +34,13 @@ function AssetDetailDialogContent({
   onReuse,
   onSaveText,
 }: AssetDetailDialogContentProps) {
-  const [draftTitle, setDraftTitle] = useState(item.title);
   const [draftBody, setDraftBody] = useState(item.contentText ?? item.prompt ?? "");
 
   const createdLabel = formatAssetCreatedAt(item.createdAt);
-  const dirty =
-    draftTitle.trim() !== item.title.trim() ||
-    draftBody.trim() !== (item.contentText ?? item.prompt ?? "").trim();
+  const dirty = draftBody.trim() !== (item.contentText ?? item.prompt ?? "").trim();
 
   const handleSave = () => {
     onSaveText(item.id, {
-      title: draftTitle,
       contentText: draftBody,
     });
   };
@@ -72,21 +69,15 @@ function AssetDetailDialogContent({
     );
   }
 
-  if (item.source === "generated") {
+  if (isGeneratedTextLibraryItem(item)) {
     return (
       <GeneratedTextDialog
-        body={draftBody}
         createdLabel={createdLabel}
-        dirty={dirty}
         item={item}
-        onBodyChange={setDraftBody}
         onClose={onClose}
         onDelete={() => onDelete(item.id)}
         onDownload={() => onDownload(item)}
         onReuse={() => onReuse(item.id)}
-        onSave={handleSave}
-        onTitleChange={setDraftTitle}
-        title={draftTitle}
       />
     );
   }
@@ -103,8 +94,6 @@ function AssetDetailDialogContent({
       onDownload={() => onDownload(item)}
       onReuse={() => onReuse(item.id)}
       onSave={handleSave}
-      onTitleChange={setDraftTitle}
-      title={draftTitle}
     />
   );
 }

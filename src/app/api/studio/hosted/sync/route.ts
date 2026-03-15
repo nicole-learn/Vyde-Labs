@@ -27,7 +27,6 @@ export async function GET(request: Request) {
       await getHostedSyncPayload({
         supabase,
         user,
-        webhookBaseUrl: new URL(request.url).origin,
         sinceRevision:
           typeof sinceRevision === "number" && Number.isFinite(sinceRevision)
             ? sinceRevision

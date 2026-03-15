@@ -5,7 +5,10 @@ import {
   createMediaMetadataFromAspectRatioLabel,
   formatAspectRatioLabel,
 } from "@/features/studio/studio-asset-metadata";
-import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import {
+  getStudioModelById,
+  requireStudioModelById,
+} from "@/features/studio/studio-model-catalog";
 import {
   LOCAL_PROVIDER_KEY_COOKIE_NAMES,
 } from "@/features/studio/studio-provider-constants";
@@ -243,7 +246,7 @@ function groupInputUrls(
   };
 }
 
-function buildQueuedModelInput(params: {
+export function buildStudioFalQueuedRequest(params: {
   modelId: string;
   requestMode: StudioGenerationRequestMode;
   draft: PersistedStudioDraft;
@@ -469,6 +472,12 @@ function buildQueuedModelInput(params: {
           prompt: draft.prompt,
           language_boost: draft.language || "English",
           output_format: "url",
+          audio_setting: {
+            format:
+              draft.outputFormat === "flac" || draft.outputFormat === "mp3"
+                ? draft.outputFormat
+                : "mp3",
+          },
           voice_setting: {
             voice_id: (draft.voice || "Wise Woman").replaceAll(" ", "_"),
             speed: Number.parseFloat(draft.speakingRate) || 1,
@@ -664,7 +673,7 @@ export async function submitStudioFalRequest(params: {
 }) {
   const uploadedInputs = await uploadInputFilesToFal(params.falKey, params.inputs);
   const inputUrls = groupInputUrls(uploadedInputs);
-  const request = buildQueuedModelInput({
+  const request = buildStudioFalQueuedRequest({
     modelId: params.modelId,
     requestMode: params.requestMode,
     draft: params.draft,
@@ -723,7 +732,7 @@ export function resolveStudioFalCompletedPayload(params: {
   draft: PersistedStudioDraft;
   payload: Record<string, unknown>;
 }): StudioFalCompletedPayload {
-  const model = getStudioModelById(params.modelId);
+  const model = requireStudioModelById(params.modelId);
 
   if (model.kind === "text") {
     return {

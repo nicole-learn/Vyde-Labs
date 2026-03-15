@@ -31,6 +31,7 @@ import {
 } from "./floating-control-bar/drag-feedback";
 import {
   AddReferenceButton,
+  BackgroundRemovalInputSurface,
   getSupportedReferenceAcceptTypes,
   isReferenceFileSupported,
   ReferenceFileThumbnail,
@@ -101,9 +102,13 @@ export function FloatingControlBar({
   const dragDepthRef = useRef(0);
   const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isBackgroundRemovalModel = model.requestMode === "background-removal";
   const canGenerate = canGenerateWithDraft(model, draft);
   const generateDisabled = !canGenerate || generatePending;
-  const canSavePrompt = draft.prompt.trim().length > 0 && !savePromptPending;
+  const canSavePrompt =
+    !isBackgroundRemovalModel &&
+    draft.prompt.trim().length > 0 &&
+    !savePromptPending;
   const quotedCredits = useMemo(
     () => quoteStudioDraftPricing(model, draft).billedCredits,
     [draft, model]
@@ -115,6 +120,12 @@ export function FloatingControlBar({
   const canAddReferences =
     showReferenceControls && draft.references.length < maxReferenceFiles;
   const hasReferences = showReferenceControls && draft.references.length > 0;
+  const backgroundRemovalReference = isBackgroundRemovalModel
+    ? draft.references[0] ?? null
+    : null;
+  const showReferenceThumbnailStrip = hasReferences && !isBackgroundRemovalModel;
+  const showInlineAddReferenceButton =
+    showReferenceControls && !hasReferences && !isBackgroundRemovalModel;
   const referenceAcceptTypes = getSupportedReferenceAcceptTypes(model);
 
   useEffect(() => {
@@ -560,7 +571,7 @@ export function FloatingControlBar({
                 )}
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  {hasReferences ? (
+                  {showReferenceThumbnailStrip ? (
                     <div className="flex items-center gap-2 px-4 pb-1 pt-3">
                       {draft.references.map((reference) => (
                         <ReferenceFileThumbnail
@@ -585,7 +596,7 @@ export function FloatingControlBar({
                   ) : null}
 
                   <div className="flex items-start">
-                    {showReferenceControls && !hasReferences ? (
+                    {showInlineAddReferenceButton ? (
                       <div className="flex shrink-0 items-center pl-4 pt-3.5">
                         <AddReferenceButton
                           acceptTypes={referenceAcceptTypes}
@@ -596,16 +607,34 @@ export function FloatingControlBar({
                     ) : null}
 
                     <div className="min-w-0 flex-1 px-3 py-3">
-                      <textarea
-                        ref={promptRef}
-                        value={draft.prompt}
-                        onChange={(event) =>
-                          onUpdateDraft({ prompt: event.target.value })
-                        }
-                        placeholder={model.promptPlaceholder ?? "Write your prompt here"}
-                        className="field-sizing-content min-h-[1.5rem] max-h-80 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm leading-5 text-foreground shadow-none outline-none focus-visible:ring-0 dark:bg-transparent"
-                        rows={1}
-                      />
+                      {isBackgroundRemovalModel ? (
+                        <BackgroundRemovalInputSurface
+                          acceptTypes={referenceAcceptTypes}
+                          canAdd={canAddReferences}
+                          onAdd={onAddReferences}
+                          onPreviewReference={setPreviewReference}
+                          onRemove={() => {
+                            if (backgroundRemovalReference) {
+                              if (previewReference?.id === backgroundRemovalReference.id) {
+                                setPreviewReference(null);
+                              }
+                              onRemoveReference(backgroundRemovalReference.id);
+                            }
+                          }}
+                          reference={backgroundRemovalReference}
+                        />
+                      ) : (
+                        <textarea
+                          ref={promptRef}
+                          value={draft.prompt}
+                          onChange={(event) =>
+                            onUpdateDraft({ prompt: event.target.value })
+                          }
+                          placeholder={model.promptPlaceholder ?? "Write your prompt here"}
+                          className="field-sizing-content min-h-[1.5rem] max-h-80 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1 text-sm leading-5 text-foreground shadow-none outline-none focus-visible:ring-0 dark:bg-transparent"
+                          rows={1}
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -621,14 +650,16 @@ export function FloatingControlBar({
                         <SettingPillButton key={pill.id} pill={pill} />
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={onSavePrompt}
-                      disabled={!canSavePrompt}
-                      className={cn(controlPillTriggerClassName(), "ml-auto")}
-                    >
-                      {savePromptPending ? "Saving..." : "Save Prompt"}
-                    </button>
+                    {!isBackgroundRemovalModel ? (
+                      <button
+                        type="button"
+                        onClick={onSavePrompt}
+                        disabled={!canSavePrompt}
+                        className={cn(controlPillTriggerClassName(), "ml-auto")}
+                      >
+                        {savePromptPending ? "Saving..." : "Save Prompt"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 

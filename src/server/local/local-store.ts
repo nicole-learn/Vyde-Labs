@@ -9,6 +9,7 @@ import {
   resolveStudioGenerationRequestMode,
 } from "@/features/studio/studio-generation-rules";
 import type {
+  LocalStudioGenerateResponse,
   LocalStudioGenerateInputDescriptor,
   LocalStudioMutation,
   LocalStudioUploadManifestEntry,
@@ -30,7 +31,11 @@ import {
   normalizeStudioEnabledModelIds,
   resolveConfiguredStudioModelId,
 } from "@/features/studio/studio-model-configuration";
-import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import {
+  findStudioModelById,
+  getStudioModelById,
+  requireStudioModelById,
+} from "@/features/studio/studio-model-catalog";
 import { quoteStudioDraftPricing } from "@/features/studio/studio-model-pricing";
 import {
   getStudioUploadedMediaKind,
@@ -90,7 +95,14 @@ type LocalStoreBootstrap = {
 };
 
 const STORE_KEY = "__TRYPLAYGROUND_LOCAL_STORE__";
+const LOCAL_QUEUE_WORKER_KEY = "__TRYPLAYGROUND_LOCAL_QUEUE_WORKER__";
 const LOCAL_SYNC_INTERVAL_MS = 1200;
+
+type LocalQueueWorkerState = {
+  latestProviderSettings: StudioProviderSettings;
+  running: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+};
 
 type WorkspaceRow = {
   id: string;
@@ -180,6 +192,40 @@ function cloneClientSnapshot(snapshot: StudioWorkspaceSnapshot) {
     (run) => !run.deletedAt
   );
   return nextSnapshot;
+}
+
+function getLocalQueueWorkerState(): LocalQueueWorkerState {
+  const globalState = globalThis as typeof globalThis & {
+    [LOCAL_QUEUE_WORKER_KEY]?: LocalQueueWorkerState;
+  };
+
+  if (!globalState[LOCAL_QUEUE_WORKER_KEY]) {
+    globalState[LOCAL_QUEUE_WORKER_KEY] = {
+      latestProviderSettings: {
+        falApiKey: "",
+        falLastValidatedAt: null,
+        openaiApiKey: "",
+        openaiLastValidatedAt: null,
+        anthropicApiKey: "",
+        anthropicLastValidatedAt: null,
+        geminiApiKey: "",
+        geminiLastValidatedAt: null,
+      },
+      running: false,
+      timer: null,
+    };
+  }
+
+  return globalState[LOCAL_QUEUE_WORKER_KEY]!;
+}
+
+function hasPendingLocalQueueWork(store: LocalStore) {
+  return store.snapshot.generationRuns.some(
+    (run) =>
+      run.status === "queued" ||
+      run.status === "pending" ||
+      run.status === "processing"
+  );
 }
 
 function getFileExtension(fileName: string) {
@@ -1381,7 +1427,7 @@ async function dispatchLocalRun(params: {
   run: GenerationRun;
   providerSettings: StudioProviderSettings;
 }) {
-  const model = getStudioModelById(params.run.modelId);
+  const model = requireStudioModelById(params.run.modelId);
   const draft = hydrateDraft(params.run.draftSnapshot, model);
   const startedAt = new Date().toISOString();
 
@@ -1470,7 +1516,16 @@ async function syncLocalQueue(store: LocalStore, providerSettings: StudioProvide
     );
 
     for (const run of processingRuns) {
-      const model = getStudioModelById(run.modelId);
+      const model = findStudioModelById(run.modelId);
+      if (!model) {
+        await failLocalRun({
+          store,
+          runId: run.id,
+          errorMessage: "This model is no longer available and the run was reset.",
+        });
+        continue;
+      }
+
       if (model.kind === "text" && model.provider !== "fal") {
         const startedAt = run.startedAt ? Date.parse(run.startedAt) : Date.now();
         if (Date.now() - startedAt > 120_000) {
@@ -1584,6 +1639,49 @@ async function syncLocalQueue(store: LocalStore, providerSettings: StudioProvide
   }
 }
 
+export function ensureLocalQueueWorker(
+  providerSettings: StudioProviderSettings,
+  delayMs = 0
+) {
+  const worker = getLocalQueueWorkerState();
+  worker.latestProviderSettings = {
+    ...providerSettings,
+  };
+
+  const store = getStore();
+  if (!hasPendingLocalQueueWork(store)) {
+    if (worker.timer) {
+      clearTimeout(worker.timer);
+      worker.timer = null;
+    }
+    return;
+  }
+
+  if (worker.running || worker.timer) {
+    return;
+  }
+
+  worker.timer = setTimeout(async () => {
+    worker.timer = null;
+    if (worker.running) {
+      return;
+    }
+
+    worker.running = true;
+    try {
+      await syncLocalQueue(getStore(), worker.latestProviderSettings);
+    } catch {
+      // Keep the worker alive; a later pass can recover.
+    } finally {
+      worker.running = false;
+    }
+
+    if (hasPendingLocalQueueWork(getStore())) {
+      ensureLocalQueueWorker(worker.latestProviderSettings, LOCAL_SYNC_INTERVAL_MS);
+    }
+  }, Math.max(0, delayMs));
+}
+
 function recoverLocalQueue(
   snapshot: StudioWorkspaceSnapshot
 ): StudioWorkspaceSnapshot {
@@ -1677,7 +1775,7 @@ function validateUploadManifest(files: File[], manifest: LocalStudioUploadManife
 
 export async function getLocalBootstrapPayload(providerSettings: StudioProviderSettings) {
   const store = getStore();
-  await syncLocalQueue(store, providerSettings);
+  ensureLocalQueueWorker(providerSettings);
   return {
     kind: "bootstrap" as const,
     revision: store.revision,
@@ -1691,7 +1789,7 @@ export async function getLocalSyncPayload(
   providerSettings: StudioProviderSettings
 ) {
   const store = getStore();
-  await syncLocalQueue(store, providerSettings);
+  ensureLocalQueueWorker(providerSettings);
   if (sinceRevision !== null && sinceRevision >= store.revision) {
     return {
       kind: "noop" as const,
@@ -2036,7 +2134,7 @@ export async function mutateLocalSnapshot(
           ...item,
           title: mutation.title?.trim() || item.title,
           contentText: nextContentText,
-          prompt: nextContentText,
+          prompt: item.role === "text_note" ? nextContentText : item.prompt,
           updatedAt,
         };
       });
@@ -2113,7 +2211,7 @@ export async function mutateLocalSnapshot(
   }
 
   commitSnapshot(store, snapshot);
-  await syncLocalQueue(store, providerSettings);
+  ensureLocalQueueWorker(providerSettings);
   return cloneLocalResponse(store);
 }
 
@@ -2124,10 +2222,11 @@ export async function queueLocalGeneration(params: {
   draft: PersistedStudioDraft;
   inputs: LocalStudioGenerateInputDescriptor[];
   uploadedFiles: Map<string, File>;
+  clientRequestId?: string | null;
 }) {
   const store = getStore();
   const snapshot = cloneSnapshot(store.snapshot);
-  const model = getStudioModelById(params.modelId);
+  const model = requireStudioModelById(params.modelId);
   const enabledModelIds = normalizeStudioEnabledModelIds(
     snapshot.modelConfiguration.enabledModelIds
   );
@@ -2331,8 +2430,13 @@ export async function queueLocalGeneration(params: {
     throw error;
   }
 
-  await syncLocalQueue(store, params.providerSettings);
-  return cloneLocalResponse(store);
+  ensureLocalQueueWorker(params.providerSettings);
+  return {
+    kind: "queued",
+    clientRequestId: params.clientRequestId?.trim() || null,
+    revision: store.revision,
+    run: nextRun,
+  } satisfies LocalStudioGenerateResponse;
 }
 
 export async function uploadLocalFiles(params: {

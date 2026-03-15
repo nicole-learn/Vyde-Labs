@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { LOCAL_PROVIDER_KEY_COOKIE_NAMES } from "@/features/studio/studio-provider-constants";
+import { ensureLocalQueueWorker } from "@/server/local/local-store";
 import { toStudioErrorResponse } from "@/server/studio/studio-route-errors";
 
 export const runtime = "nodejs";
@@ -37,6 +38,17 @@ export async function POST(request: Request) {
         response.cookies.delete(cookieName);
       }
     }
+
+    ensureLocalQueueWorker({
+      falApiKey: keyMap.fal,
+      falLastValidatedAt: null,
+      openaiApiKey: keyMap.openai,
+      openaiLastValidatedAt: null,
+      anthropicApiKey: keyMap.anthropic,
+      anthropicLastValidatedAt: null,
+      geminiApiKey: keyMap.gemini,
+      geminiLastValidatedAt: null,
+    });
 
     return response;
   } catch (error) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Play } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { cn } from "@/lib/cn";
 import { getStudioModelById } from "../../studio-model-catalog";
 import type { LibraryItem } from "../../types";
@@ -206,7 +206,13 @@ export function ActionButton({
   );
 }
 
-export function MediaStage({ item }: { item: LibraryItem }) {
+export function MediaStage({
+  item,
+  imageElementRef,
+}: {
+  item: LibraryItem;
+  imageElementRef?: Ref<HTMLImageElement | null>;
+}) {
   if (!item.previewUrl) {
     return (
       <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-black/30 text-sm text-white/55">
@@ -238,6 +244,7 @@ export function MediaStage({ item }: { item: LibraryItem }) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imageElementRef}
         src={item.previewUrl}
         alt={item.title}
         className="max-h-full max-w-full rounded-[10px] object-contain"

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import { requireStudioModelById } from "@/features/studio/studio-model-catalog";
 import type {
   HostedStudioGenerateInputDescriptor,
   HostedStudioMutation,
@@ -276,6 +276,10 @@ export function parseRequiredModelId(value: FormDataEntryValue | null) {
   return idSchema.parse(typeof value === "string" ? value : "");
 }
 
+export function parseOptionalClientRequestId(value: FormDataEntryValue | null) {
+  return nullableIdSchema.parse(typeof value === "string" ? value : null);
+}
+
 export function parseHostedMutationPayload(value: unknown): HostedStudioMutation {
   return hostedMutationSchema.parse(value);
 }
@@ -432,7 +436,7 @@ export function validateStudioGenerationRequest(params: {
   inputs: Array<HostedStudioGenerateInputDescriptor | LocalStudioGenerateInputDescriptor>;
   referencedAssetKinds?: Map<string, LibraryItemKind>;
 }) {
-  const model = getStudioModelById(params.modelId);
+  const model = requireStudioModelById(params.modelId);
   const referenceInputs = params.inputs.filter((input) => input.slot === "reference");
   const startFrameInputs = params.inputs.filter((input) => input.slot === "start_frame");
   const endFrameInputs = params.inputs.filter((input) => input.slot === "end_frame");

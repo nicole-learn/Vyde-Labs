@@ -1,6 +1,7 @@
 import type {
   DraftReferenceSource,
   GenerationRun,
+  StudioCreditBalance,
   LibraryItemKind,
   PersistedStudioDraft,
   StudioReferenceInputKind,
@@ -31,6 +32,14 @@ export type HostedStudioSyncResponse =
 export interface HostedStudioMutationResponse {
   revision: number;
   state: StudioHostedWorkspaceState;
+}
+
+export interface HostedStudioGenerateResponse {
+  kind: "queued";
+  clientRequestId: string | null;
+  revision: number;
+  run: GenerationRun;
+  creditBalance: StudioCreditBalance | null;
 }
 
 export interface HostedStudioUploadManifestEntry {

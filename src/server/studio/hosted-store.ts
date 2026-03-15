@@ -4,6 +4,7 @@ import {
   createGenerationRunPreviewUrl,
   createGenerationRunSummary,
   HOSTED_STUDIO_WORKSPACE_ID,
+  STUDIO_STATE_SCHEMA_VERSION,
   hydrateDraft,
   toPersistedDraft,
 } from "@/features/studio/studio-local-runtime-data";
@@ -15,13 +16,18 @@ import {
 } from "@/features/studio/studio-generation-rules";
 import { createMediaMetadataFromAspectRatioLabel } from "@/features/studio/studio-asset-metadata";
 import { reorderStudioFoldersByIds } from "@/features/studio/studio-folder-order";
-import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import {
+  findStudioModelById,
+  getStudioModelById,
+  requireStudioModelById,
+} from "@/features/studio/studio-model-catalog";
 import {
   normalizeStudioEnabledModelIds,
   resolveConfiguredStudioModelId,
 } from "@/features/studio/studio-model-configuration";
 import { quoteStudioDraftPricing } from "@/features/studio/studio-model-pricing";
 import type {
+  HostedStudioGenerateResponse,
   HostedStudioGenerateInputDescriptor,
   HostedStudioMutation,
   HostedStudioUploadManifestEntry,
@@ -44,10 +50,7 @@ import type {
 } from "@/features/studio/types";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import {
-  applyHostedCreditLedgerEntry,
-  deleteHostedBillingCustomersForUser,
-} from "@/server/studio/hosted-billing";
+import { applyHostedCreditLedgerEntry } from "@/server/studio/hosted-billing-core";
 import {
   getStudioFalQueuedResult,
   getStudioFalQueueStatus,
@@ -57,7 +60,7 @@ import {
   type StudioFalInputFile,
 } from "@/server/fal/studio-fal";
 import { getFalServerEnv } from "@/lib/supabase/env";
-import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createStudioRouteError } from "@/server/studio/studio-route-errors";
 import { validateStudioGenerationRequest } from "@/server/studio/studio-request-validation";
 import {
@@ -540,6 +543,28 @@ async function listHostedUserRuns(
   return data ?? [];
 }
 
+async function listHostedUsersWithActiveRuns(
+  supabase: HostedSupabaseClient
+) {
+  const { data, error } = await supabase
+    .from("generation_runs")
+    .select("user_id")
+    .is("deleted_at", null)
+    .in("status", ["pending", "queued", "processing"]);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => row.user_id?.trim() || "")
+        .filter((value) => value.length > 0)
+    )
+  );
+}
+
 async function listHostedRunInputs(supabase: HostedSupabaseClient, runId: string) {
   const { data, error } = await supabase
     .from("generation_run_inputs")
@@ -764,6 +789,28 @@ async function getHostedRunById(
     .from("generation_runs")
     .select("*")
     .eq("id", runId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function getHostedGeneratedOutputRunFile(params: {
+  supabase: HostedSupabaseClient;
+  userId: string;
+  runId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("run_files")
+    .select("*")
+    .eq("user_id", params.userId)
+    .eq("run_id", params.runId)
+    .eq("file_role", "output")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -1076,7 +1123,7 @@ async function buildHostedState(params: {
     systemConfig,
     activeHostedUserCount,
     state: {
-      schemaVersion: 6,
+      schemaVersion: STUDIO_STATE_SCHEMA_VERSION,
       mode: "hosted",
       revision: account.revision,
       syncedAt: new Date().toISOString(),
@@ -1144,7 +1191,7 @@ async function completeHostedRunFromProviderPayload(params: {
     return;
   }
 
-  const model = getStudioModelById(currentRun.model_id);
+  const model = requireStudioModelById(currentRun.model_id);
   const draft = hydrateDraft(
     parseDraftSnapshot(currentRun.draft_snapshot, currentRun.model_id),
     model
@@ -1182,7 +1229,8 @@ async function completeHostedRunFromProviderPayload(params: {
   }
 
   let outputRunFileId: string | null = null;
-  let outputStoragePath: string | null = null;
+  let outputCleanupRunFileId: string | null = null;
+  let outputCleanupStoragePath: string | null = null;
   let fileName: string | null = null;
   let mimeType: string | null = null;
   let byteSize: number | null = null;
@@ -1201,7 +1249,8 @@ async function completeHostedRunFromProviderPayload(params: {
       mimeType: resolved.outputFile.mimeType,
     });
     outputRunFileId = uploaded.runFileId;
-    outputStoragePath = uploaded.storagePath;
+    outputCleanupRunFileId = uploaded.runFileId;
+    outputCleanupStoragePath = uploaded.storagePath;
     fileName = uploaded.fileName;
     mimeType = uploaded.mimeType;
     byteSize = uploaded.byteSize;
@@ -1211,28 +1260,58 @@ async function completeHostedRunFromProviderPayload(params: {
     aspectRatioLabel = resolved.outputFile.aspectRatioLabel;
     hasAlpha = resolved.outputFile.hasAlpha;
 
-    const { error: runFileError } = await params.supabase.from("run_files").insert({
-      id: outputRunFileId,
-      run_id: currentRun.id,
-      user_id: currentRun.user_id,
-      file_role: "output",
-      source_type: "generated",
-      storage_bucket: HOSTED_MEDIA_BUCKET,
-      storage_path: uploaded.storagePath,
-      mime_type: mimeType,
-      file_name: fileName,
-      file_size_bytes: byteSize,
-      media_width: mediaWidth,
-      media_height: mediaHeight,
-      media_duration_seconds: mediaDurationSeconds,
-      aspect_ratio_label: aspectRatioLabel,
-      has_alpha: hasAlpha,
-      metadata: {} as Json,
-      created_at: finishedAt,
-    });
+    const { error: runFileError } = await params.supabase
+      .from("run_files")
+      .insert({
+        id: outputRunFileId,
+        run_id: currentRun.id,
+        user_id: currentRun.user_id,
+        file_role: "output",
+        source_type: "generated",
+        storage_bucket: HOSTED_MEDIA_BUCKET,
+        storage_path: uploaded.storagePath,
+        mime_type: mimeType,
+        file_name: fileName,
+        file_size_bytes: byteSize,
+        media_width: mediaWidth,
+        media_height: mediaHeight,
+        media_duration_seconds: mediaDurationSeconds,
+        aspect_ratio_label: aspectRatioLabel,
+        has_alpha: hasAlpha,
+        metadata: {} as Json,
+        created_at: finishedAt,
+      });
 
     if (runFileError) {
-      throw new Error(runFileError.message);
+      if (runFileError.code === "23505") {
+        const existingOutputRunFile = await getHostedGeneratedOutputRunFile({
+          supabase: params.supabase,
+          userId: currentRun.user_id,
+          runId: currentRun.id,
+        });
+
+        if (existingOutputRunFile) {
+          await removeHostedStoragePaths(params.supabase, [uploaded.storagePath]);
+
+          outputRunFileId = existingOutputRunFile.id;
+          outputCleanupRunFileId = null;
+          outputCleanupStoragePath = null;
+          fileName = existingOutputRunFile.file_name;
+          mimeType = existingOutputRunFile.mime_type;
+          byteSize = existingOutputRunFile.file_size_bytes;
+          mediaWidth = existingOutputRunFile.media_width;
+          mediaHeight = existingOutputRunFile.media_height;
+          mediaDurationSeconds = existingOutputRunFile.media_duration_seconds;
+          aspectRatioLabel = existingOutputRunFile.aspect_ratio_label;
+          hasAlpha = existingOutputRunFile.has_alpha;
+        } else {
+          await removeHostedStoragePaths(params.supabase, [uploaded.storagePath]);
+          throw new Error(runFileError.message);
+        }
+      } else {
+        await removeHostedStoragePaths(params.supabase, [uploaded.storagePath]);
+        throw new Error(runFileError.message);
+      }
     }
   } else if (resolved.outputKind !== "text") {
     const inferredMetadata = createMediaMetadataFromAspectRatioLabel(
@@ -1247,12 +1326,12 @@ async function completeHostedRunFromProviderPayload(params: {
   const nextItemId = createHostedUuid();
   const latestRun = await getHostedRunById(params.supabase, currentRun.id);
   if (!latestRun) {
-    if (outputRunFileId) {
-      await params.supabase.from("run_files").delete().eq("id", outputRunFileId);
-    }
-    if (outputStoragePath) {
-      await removeHostedStoragePaths(params.supabase, [outputStoragePath]);
-    }
+    await removeHostedGeneratedOutputArtifacts({
+      supabase: params.supabase,
+      userId: currentRun.user_id,
+      runFileId: outputCleanupRunFileId,
+      storagePath: outputCleanupStoragePath,
+    });
     return;
   }
 
@@ -1260,8 +1339,8 @@ async function completeHostedRunFromProviderPayload(params: {
     await removeHostedGeneratedOutputArtifacts({
       supabase: params.supabase,
       userId: currentRun.user_id,
-      runFileId: outputRunFileId,
-      storagePath: outputStoragePath,
+      runFileId: outputCleanupRunFileId,
+      storagePath: outputCleanupStoragePath,
     });
     await finalizeDeletedHostedRun({
       supabase: params.supabase,
@@ -1281,8 +1360,8 @@ async function completeHostedRunFromProviderPayload(params: {
     await removeHostedGeneratedOutputArtifacts({
       supabase: params.supabase,
       userId: latestRun.user_id,
-      runFileId: outputRunFileId,
-      storagePath: outputStoragePath,
+      runFileId: outputCleanupRunFileId,
+      storagePath: outputCleanupStoragePath,
     });
 
     if (latestRun.status === "completed" && latestRun.output_asset_id === latestExistingItemId) {
@@ -1345,8 +1424,8 @@ async function completeHostedRunFromProviderPayload(params: {
         await removeHostedGeneratedOutputArtifacts({
           supabase: params.supabase,
           userId: latestRun.user_id,
-          runFileId: outputRunFileId,
-          storagePath: outputStoragePath,
+          runFileId: outputCleanupRunFileId,
+          storagePath: outputCleanupStoragePath,
         });
 
         await markHostedRunCompleted({
@@ -1434,7 +1513,7 @@ async function dispatchHostedRun(params: {
   run: GenerationRunRow;
   webhookBaseUrl: string;
 }) {
-  const model = getStudioModelById(params.run.model_id);
+  const model = requireStudioModelById(params.run.model_id);
   const draft = hydrateDraft(
     parseDraftSnapshot(params.run.draft_snapshot, params.run.model_id),
     model
@@ -1617,23 +1696,32 @@ async function dispatchHostedQueuedRuns(params: {
   }
 }
 
-async function syncHostedUserQueue(params: {
+async function syncHostedUserQueueByUserId(params: {
   supabase: HostedSupabaseClient;
-  user: User;
+  userId: string;
   webhookBaseUrl: string;
 }) {
-  await ensureHostedAccount(params.supabase, params.user);
   const [systemConfig, activeHostedUserCount, runRows] = await Promise.all([
     getHostedSystemConfig(params.supabase),
     getActiveHostedUserCount(params.supabase),
-    listHostedUserRuns(params.supabase, params.user.id, {
+    listHostedUserRuns(params.supabase, params.userId, {
       includeDeleted: true,
     }),
   ]);
 
   const processingRuns = runRows.filter((run) => run.status === "processing");
   for (const run of processingRuns) {
-    const model = getStudioModelById(run.model_id);
+    const model = findStudioModelById(run.model_id);
+    if (!model) {
+      await failHostedRun({
+        supabase: params.supabase,
+        run,
+        refundCredits: true,
+        errorMessage: "This model is no longer available and the run was reset.",
+      });
+      continue;
+    }
+
     if (model.kind === "text" && model.provider !== "fal") {
       const startedAt = run.started_at ? Date.parse(run.started_at) : Date.now();
       if (Date.now() - startedAt > 120_000) {
@@ -1721,12 +1809,12 @@ async function syncHostedUserQueue(params: {
     }
   }
 
-  const refreshedRuns = await listHostedUserRuns(params.supabase, params.user.id, {
+  const refreshedRuns = await listHostedUserRuns(params.supabase, params.userId, {
     includeDeleted: true,
   });
   await dispatchHostedQueuedRuns({
     supabase: params.supabase,
-    userId: params.user.id,
+    userId: params.userId,
     systemConfig,
     activeHostedUserCount,
     runRows: refreshedRuns,
@@ -1735,6 +1823,45 @@ async function syncHostedUserQueue(params: {
 }
 
 export async function syncHostedQueueForUserId(params: {
+  supabase: HostedSupabaseClient;
+  userId: string;
+  webhookBaseUrl: string;
+}) {
+  await syncHostedUserQueueByUserId(params);
+}
+
+export async function syncHostedQueuesForActiveUsers(params: {
+  supabase: HostedSupabaseClient;
+  webhookBaseUrl: string;
+}) {
+  const userIds = await listHostedUsersWithActiveRuns(params.supabase);
+  let syncedUserCount = 0;
+  let failedUserCount = 0;
+  const failedUserIds: string[] = [];
+
+  for (const userId of userIds) {
+    try {
+      await syncHostedUserQueueByUserId({
+        supabase: params.supabase,
+        userId,
+        webhookBaseUrl: params.webhookBaseUrl,
+      });
+      syncedUserCount += 1;
+    } catch {
+      failedUserCount += 1;
+      failedUserIds.push(userId);
+    }
+  }
+
+  return {
+    activeUserCount: userIds.length,
+    syncedUserCount,
+    failedUserCount,
+    failedUserIds,
+  };
+}
+
+export async function dispatchHostedQueueForUserId(params: {
   supabase: HostedSupabaseClient;
   userId: string;
   webhookBaseUrl: string;
@@ -1811,12 +1938,6 @@ export async function handleHostedFalWebhook(params: {
     });
   }
 
-  await syncHostedQueueForUserId({
-    supabase: params.supabase,
-    userId: run.user_id,
-    webhookBaseUrl: params.webhookBaseUrl,
-  });
-
   return {
     ok: true,
     userId: run.user_id,
@@ -1829,17 +1950,20 @@ export async function getHostedSyncPayload(params: {
   supabase: HostedSupabaseClient;
   user: User;
   sinceRevision: number | null;
-  webhookBaseUrl: string;
 }) {
-  await syncHostedUserQueue({
-    supabase: params.supabase,
-    user: params.user,
-    webhookBaseUrl: params.webhookBaseUrl,
-  });
+  const account = await ensureHostedAccount(params.supabase, params.user);
+  if (params.sinceRevision !== null && params.sinceRevision >= account.revision) {
+    return {
+      kind: "noop" as const,
+      revision: account.revision,
+      syncIntervalMs: HOSTED_SYNC_INTERVAL_MS,
+    };
+  }
 
   const nextState = await buildHostedState({
     supabase: params.supabase,
     user: params.user,
+    account,
   });
 
   if (
@@ -2044,6 +2168,20 @@ export async function mutateHostedState(params: {
       const hostedRunFileIds = targetItems
         .flatMap((item) => [item.run_file_id, item.thumbnail_file_id])
         .filter((value): value is string => Boolean(value));
+      const updatedAt = new Date().toISOString();
+
+      const { error: clearRunOutputError } = await params.supabase
+        .from("generation_runs")
+        .update({
+          output_asset_id: null,
+          updated_at: updatedAt,
+        })
+        .eq("user_id", params.user.id)
+        .in("output_asset_id", mutation.itemIds);
+
+      if (clearRunOutputError) {
+        throw new Error(clearRunOutputError.message);
+      }
 
       if (hostedRunFileIds.length > 0) {
         const runFileRows = await listHostedUserRunFiles(params.supabase, params.user.id);
@@ -2096,8 +2234,24 @@ export async function mutateHostedState(params: {
         payload.title = mutation.title.trim();
       }
       if (typeof mutation.contentText === "string") {
-        payload.content_text = mutation.contentText.trim();
-        payload.prompt = mutation.contentText.trim();
+        const trimmedContentText = mutation.contentText.trim();
+        payload.content_text = trimmedContentText;
+
+        const { data: existingItem, error: existingItemError } = await params.supabase
+          .from("library_items")
+          .select("role")
+          .eq("id", mutation.itemId)
+          .eq("user_id", params.user.id)
+          .eq("kind", "text")
+          .maybeSingle();
+
+        if (existingItemError) {
+          throw new Error(existingItemError.message);
+        }
+
+        if (existingItem?.role === "text_note") {
+          payload.prompt = trimmedContentText;
+        }
       }
 
       const { error } = await params.supabase
@@ -2371,7 +2525,7 @@ export async function queueHostedGeneration(params: {
   draft: GenerationRun["draftSnapshot"] | PersistedStudioDraft;
   inputs: HostedStudioGenerateInputDescriptor[];
   uploadedFiles: Map<string, File>;
-  webhookBaseUrl: string;
+  clientRequestId?: string | null;
 }) {
   const [account, systemConfig] = await Promise.all([
     ensureHostedAccount(params.supabase, params.user),
@@ -2399,7 +2553,7 @@ export async function queueHostedGeneration(params: {
     );
   }
 
-  const model = getStudioModelById(params.modelId);
+  const model = requireStudioModelById(params.modelId);
   const persistedDraft: PersistedStudioDraft = {
     ...toPersistedDraft(createDraft(model)),
     ...params.draft,
@@ -2512,6 +2666,7 @@ export async function queueHostedGeneration(params: {
   const createdStoragePaths: string[] = [];
   const createdRunFileIds: string[] = [];
   let holdApplied = false;
+  let balanceAfterHold: number | null = null;
 
   try {
     const { error: runInsertError } = await params.supabase
@@ -2593,7 +2748,7 @@ export async function queueHostedGeneration(params: {
       inputPosition += 1;
     }
 
-    await applyHostedCreditLedgerEntry({
+    const ledgerEntry = await applyHostedCreditLedgerEntry({
       supabase: params.supabase,
       userId: params.user.id,
       deltaCredits: -pricingQuote.billedCredits,
@@ -2607,6 +2762,7 @@ export async function queueHostedGeneration(params: {
       },
     });
     holdApplied = true;
+    balanceAfterHold = ledgerEntry.balance_after;
   } catch (error) {
     await params.supabase
       .from("generation_run_inputs")
@@ -2645,21 +2801,23 @@ export async function queueHostedGeneration(params: {
     throw error;
   }
 
-  await syncHostedUserQueue({
-    supabase: params.supabase,
-    user: params.user,
-    webhookBaseUrl: params.webhookBaseUrl,
-  });
-
-  const nextState = await buildHostedState({
-    supabase: params.supabase,
-    user: params.user,
-  });
+  const refreshedAccount = await ensureHostedAccount(params.supabase, params.user);
+  const queuedRun = mapGenerationRun(runInsert);
 
   return {
-    revision: nextState.state.revision,
-    state: nextState.state,
-  };
+    kind: "queued",
+    clientRequestId: params.clientRequestId?.trim() || null,
+    revision: refreshedAccount.revision,
+    run: queuedRun,
+    creditBalance: {
+      userId: params.user.id,
+      balanceCredits:
+        typeof balanceAfterHold === "number"
+          ? balanceAfterHold
+          : refreshedAccount.credit_balance,
+      updatedAt: refreshedAccount.updated_at,
+    },
+  } satisfies HostedStudioGenerateResponse;
 }
 
 export async function deleteHostedAccount(params: {
@@ -2700,6 +2858,9 @@ export async function deleteHostedAccount(params: {
     throw new Error(feedbackDeleteError.message);
   }
 
+  const { deleteHostedBillingCustomersForUser } = await import(
+    "@/server/studio/hosted-billing"
+  );
   await deleteHostedBillingCustomersForUser({
     supabase: adminSupabase,
     userId: params.user.id,

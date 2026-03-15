@@ -1,4 +1,4 @@
-import { getStudioModelById } from "@/features/studio/studio-model-catalog";
+import { requireStudioModelById } from "@/features/studio/studio-model-catalog";
 import type { StudioFalInputFile } from "@/server/fal/studio-fal";
 import type {
   StudioModelDefinition,
@@ -8,7 +8,7 @@ import type {
 import { getTextProviderServerEnv } from "@/lib/supabase/env";
 
 function getTextModel(modelId: string) {
-  const model = getStudioModelById(modelId);
+  const model = requireStudioModelById(modelId);
   if (model.kind !== "text" || !model.apiModelId) {
     throw new Error("This model is not configured as a direct text provider.");
   }
@@ -73,6 +73,65 @@ async function parseErrorMessage(response: Response) {
 
 async function blobToBase64(blob: Blob) {
   return Buffer.from(await blob.arrayBuffer()).toString("base64");
+}
+
+function ensureNonEmptyTextOutput(output: string, providerLabel: string) {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    throw new Error(`${providerLabel} returned no text output.`);
+  }
+
+  return trimmed;
+}
+
+function extractOpenAiOutputText(payload: Record<string, unknown>) {
+  if (typeof payload.output_text === "string" && payload.output_text.trim().length > 0) {
+    return payload.output_text.trim();
+  }
+
+  const output = payload.output;
+  if (!Array.isArray(output)) {
+    return "";
+  }
+
+  const textParts: string[] = [];
+  for (const entry of output) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    if (record.type === "output_text" && typeof record.text === "string") {
+      const value = record.text.trim();
+      if (value) {
+        textParts.push(value);
+      }
+    }
+
+    const content = record.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+
+    for (const contentEntry of content) {
+      if (!contentEntry || typeof contentEntry !== "object") {
+        continue;
+      }
+
+      const contentRecord = contentEntry as Record<string, unknown>;
+      if (
+        (contentRecord.type === "output_text" || contentRecord.type === "text") &&
+        typeof contentRecord.text === "string"
+      ) {
+        const value = contentRecord.text.trim();
+        if (value) {
+          textParts.push(value);
+        }
+      }
+    }
+  }
+
+  return textParts.join("\n\n");
 }
 
 async function buildOpenAiInputContent(
@@ -219,11 +278,15 @@ async function generateOpenAiText(params: {
     output_text?: string;
     usage?: Record<string, unknown>;
   } & Record<string, unknown>;
+  const output = ensureNonEmptyTextOutput(
+    extractOpenAiOutputText(payload),
+    "OpenAI"
+  );
 
   return {
     payload: {
       ...payload,
-      output: payload.output_text ?? "",
+      output,
     },
     usageSnapshot: payload.usage ?? {},
   };
@@ -272,7 +335,7 @@ async function generateAnthropicText(params: {
   return {
     payload: {
       ...payload,
-      output,
+      output: ensureNonEmptyTextOutput(output, "Claude"),
     },
     usageSnapshot: payload.usage ?? {},
   };
@@ -328,7 +391,7 @@ async function generateGeminiText(params: {
   return {
     payload: {
       ...payload,
-      output,
+      output: ensureNonEmptyTextOutput(output, "Gemini"),
     },
     usageSnapshot: payload.usageMetadata ?? {},
   };
@@ -377,7 +440,7 @@ export function getRequiredProviderKeyForModel(params: {
     "falApiKey" | "openaiApiKey" | "anthropicApiKey" | "geminiApiKey"
   >;
 }) {
-  const model = getStudioModelById(params.modelId);
+  const model = requireStudioModelById(params.modelId);
 
   switch (model.provider) {
     case "fal":

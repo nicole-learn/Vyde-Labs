@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type {
   HostedStudioGenerateInputDescriptor,
 } from "@/features/studio/studio-hosted-api";
 import type { GenerationRun, PersistedStudioDraft } from "@/features/studio/types";
-import { requireSupabaseUser } from "@/lib/supabase/server";
-import { queueHostedGeneration } from "@/server/studio/hosted-store";
+import { createSupabaseAdminClient, requireSupabaseUser } from "@/lib/supabase/server";
 import {
+  dispatchHostedQueueForUserId,
+  queueHostedGeneration,
+} from "@/server/studio/hosted-store";
+import {
+  parseOptionalClientRequestId,
   parseHostedGenerateDraft,
   parseHostedGenerateInputs,
   parseOptionalFolderId,
@@ -22,6 +26,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const modelId = parseRequiredModelId(formData.get("modelId"));
     const folderId = parseOptionalFolderId(formData.get("folderId"));
+    const clientRequestId = parseOptionalClientRequestId(
+      formData.get("clientRequestId")
+    );
     const draft: GenerationRun["draftSnapshot"] | PersistedStudioDraft =
       parseHostedGenerateDraft(formData.get("draft"));
     const inputs: HostedStudioGenerateInputDescriptor[] =
@@ -42,13 +49,20 @@ export async function POST(request: Request) {
         supabase,
         user,
         modelId,
-        webhookBaseUrl: new URL(request.url).origin,
         folderId,
         draft,
         inputs,
         uploadedFiles,
+        clientRequestId,
       })
     );
+    after(async () => {
+      await dispatchHostedQueueForUserId({
+        supabase: createSupabaseAdminClient(),
+        userId: user.id,
+        webhookBaseUrl: new URL(request.url).origin,
+      }).catch(() => undefined);
+    });
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {

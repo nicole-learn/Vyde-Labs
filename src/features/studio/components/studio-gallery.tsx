@@ -34,6 +34,10 @@ import {
 import {
   getLibraryItemPreviewMediaKind,
 } from "../studio-preview-utils";
+import {
+  getLibraryItemReuseActionLabel,
+  isGeneratedTextLibraryItem,
+} from "../studio-library-item-behavior";
 import type { GenerationRun, LibraryItem } from "../types";
 import { useDragHoverReset } from "../use-drag-hover-reset";
 
@@ -522,6 +526,9 @@ function AssetTile({
   const checkboxVisible = selectionModeEnabled || isSelected;
   const hoverControlsVisible =
     "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
+  const isGeneratedTextItem = isGeneratedTextLibraryItem(item);
+  const reuseActionLabel = getLibraryItemReuseActionLabel(item);
+  const usesLightTextOverlay = item.kind !== "text" || isGeneratedTextItem;
 
   return (
     <div
@@ -580,10 +587,12 @@ function AssetTile({
         isBeingDragged ? "scale-[0.985] opacity-30" : undefined,
         isSelected ? "ring-2 ring-primary/85 ring-inset" : undefined,
         item.kind === "text"
-          ? "bg-[#f5f0e8] text-black dark:bg-[#f5f0e8] dark:text-black"
+          ? isGeneratedTextItem
+            ? `${getRunCardSurfaceClassName("text")} text-white`
+            : "bg-[#f5f0e8] text-black dark:bg-[#f5f0e8] dark:text-black"
           : "bg-muted/40"
       )}
-      aria-label={item.prompt || item.title}
+      aria-label={item.title}
     >
       {item.kind === "audio" ? (
         <div className="relative size-full overflow-hidden bg-[linear-gradient(180deg,rgba(9,18,28,0.96),rgba(8,20,34,0.84))]">
@@ -644,11 +653,36 @@ function AssetTile({
           </div>
         </div>
       ) : item.kind === "text" ? (
-        <div className="flex size-full flex-col p-4">
-          <p className="line-clamp-8 text-sm leading-6 text-black/82">
-            {item.contentText || item.prompt || item.title}
-          </p>
-        </div>
+        isGeneratedTextItem ? (
+          <div className="relative flex size-full flex-col overflow-hidden">
+            <span className="pointer-events-none absolute left-4 top-2 h-20 w-20 rounded-full bg-primary/16 blur-3xl" />
+            <span className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-white/[0.04] blur-3xl" />
+            <div className="relative z-10 flex size-full flex-col gap-3 p-4">
+              <div className="min-h-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/56">
+                  Output
+                </p>
+                <p className="mt-2 line-clamp-7 text-sm leading-6 text-white/88">
+                  {item.contentText || "No output returned yet."}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
+                  Prompt
+                </p>
+                <p className="mt-1.5 line-clamp-3 text-xs leading-5 text-white/72">
+                  {item.prompt.trim() || "No prompt available."}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex size-full flex-col p-4">
+            <p className="line-clamp-8 text-sm leading-6 text-black/82">
+              {item.contentText || item.prompt || item.title}
+            </p>
+          </div>
+        )
       ) : (
         <div className="flex size-full items-center justify-center bg-[linear-gradient(to_bottom,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] text-white/60">
           {item.title}
@@ -711,8 +745,8 @@ function AssetTile({
             onReuseItem(item.id);
           }}
           className="inline-flex size-8 items-center justify-center rounded-md border border-white/65 bg-black/50 text-white backdrop-blur-sm transition hover:bg-black/65"
-          aria-label={`Reuse ${item.title}`}
-          title="Load settings to controls"
+          aria-label={`${reuseActionLabel}: ${item.title}`}
+          title={reuseActionLabel}
         >
           <Copy className="size-3.5" />
         </button>
@@ -745,7 +779,7 @@ function AssetTile({
             <p
               className={cn(
                 "truncate text-sm font-medium",
-                item.kind === "text" ? "text-black/90" : "text-white"
+                usesLightTextOverlay ? "text-white" : "text-black/90"
               )}
             >
               {item.title}
@@ -753,7 +787,7 @@ function AssetTile({
             <p
               className={cn(
                 "mt-0.5 truncate text-xs",
-                item.kind === "text" ? "text-black/56" : "text-white/62"
+                usesLightTextOverlay ? "text-white/62" : "text-black/56"
               )}
             >
               {item.meta}

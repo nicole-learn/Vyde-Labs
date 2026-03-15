@@ -1,29 +1,61 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AssetDetailDialog } from "./asset-detail-dialog";
-import { CreateTextDialog } from "./create-text-dialog";
+import dynamic from "next/dynamic";
 import { FloatingControlBar } from "./floating-control-bar";
-import { FolderDeleteDialog } from "./folder-delete-dialog";
-import { FolderDialog } from "./folder-dialog";
 import { FolderSidebar } from "./folder-sidebar";
-import { HostedAuthDialog } from "./hosted-auth-dialog";
-import { QueueLimitDialog } from "./queue-limit-dialog";
 import { StudioDevModeOverlay } from "./studio-dev-mode-overlay";
 import { StudioDragPreviewOverlay } from "./studio-drag-preview-overlay";
-import { StudioFeedbackDialog } from "./studio-feedback-dialog";
 import { StudioGallery } from "./studio-gallery";
 import { StudioMobileRail } from "./studio-mobile-rail";
-import { StudioMessageDialog } from "./studio-message-dialog";
-import { StudioSettingsDialog } from "./studio-settings-dialog";
 import { StudioTopBar } from "./studio-top-bar";
-import { UploadFilesDialog } from "./upload-files-dialog";
 import { StudioWorkspaceShell } from "./studio-workspace-shell";
 import { useStudioAppMode } from "../studio-app-mode";
 import { downloadFolderItems, downloadLibraryItem } from "../studio-downloads";
 import { isStudioItemDrag } from "../studio-drag-data";
 import { useStudioRuntime } from "../use-studio-runtime";
 import type { LibraryItem } from "../types";
+
+const AssetDetailDialog = dynamic(
+  () => import("./asset-detail-dialog").then((mod) => mod.AssetDetailDialog),
+  { loading: () => null, ssr: false }
+);
+const CreateTextDialog = dynamic(
+  () => import("./create-text-dialog").then((mod) => mod.CreateTextDialog),
+  { loading: () => null, ssr: false }
+);
+const FolderDeleteDialog = dynamic(
+  () => import("./folder-delete-dialog").then((mod) => mod.FolderDeleteDialog),
+  { loading: () => null, ssr: false }
+);
+const FolderDialog = dynamic(
+  () => import("./folder-dialog").then((mod) => mod.FolderDialog),
+  { loading: () => null, ssr: false }
+);
+const HostedAuthDialog = dynamic(
+  () => import("./hosted-auth-dialog").then((mod) => mod.HostedAuthDialog),
+  { loading: () => null, ssr: false }
+);
+const QueueLimitDialog = dynamic(
+  () => import("./queue-limit-dialog").then((mod) => mod.QueueLimitDialog),
+  { loading: () => null, ssr: false }
+);
+const StudioFeedbackDialog = dynamic(
+  () => import("./studio-feedback-dialog").then((mod) => mod.StudioFeedbackDialog),
+  { loading: () => null, ssr: false }
+);
+const StudioMessageDialog = dynamic(
+  () => import("./studio-message-dialog").then((mod) => mod.StudioMessageDialog),
+  { loading: () => null, ssr: false }
+);
+const StudioSettingsDialog = dynamic(
+  () => import("./studio-settings-dialog").then((mod) => mod.StudioSettingsDialog),
+  { loading: () => null, ssr: false }
+);
+const UploadFilesDialog = dynamic(
+  () => import("./upload-files-dialog").then((mod) => mod.UploadFilesDialog),
+  { loading: () => null, ssr: false }
+);
 
 const XL_BREAKPOINT_QUERY = "(min-width: 1280px)";
 
@@ -403,6 +435,22 @@ export function StudioPage({
           />
         }
       />
+
+      {!isDesktopViewport ? (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/96 px-6 text-center backdrop-blur-md">
+          <div className="w-full max-w-md rounded-[32px] border border-white/10 bg-background/92 px-8 py-10 shadow-2xl shadow-black/60">
+            <div className="text-[13px] font-semibold uppercase tracking-[0.22em] text-primary/88">
+              Desktop Only
+            </div>
+            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white">
+              TryPlayground isn&apos;t available on mobile yet.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-white/68">
+              Open TryPlayground on a PC or laptop to use the full workspace.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <StudioDragPreviewOverlay preview={dragPreview} />
       {showDevModeToggle ? (

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { getLibraryItemReuseButtonLabel } from "../../studio-library-item-behavior";
 import type { LibraryItem } from "../../types";
 import {
   ASSET_DETAIL_DIALOG_LAYER_CLASS,
@@ -31,8 +32,6 @@ export function UploadedTextDialog({
   onDownload,
   onReuse,
   onSave,
-  onTitleChange,
-  title,
 }: {
   body: string;
   createdLabel: string;
@@ -44,11 +43,10 @@ export function UploadedTextDialog({
   onDownload: () => void;
   onReuse: () => void;
   onSave: () => void;
-  onTitleChange: (value: string) => void;
-  title: string;
 }) {
   const [copiedText, setCopiedText] = useState(false);
   const metaPills = useMemo(() => splitAssetMetaPills(item.meta), [item.meta]);
+  const reuseButtonLabel = getLibraryItemReuseButtonLabel(item);
 
   return (
     <div
@@ -65,15 +63,7 @@ export function UploadedTextDialog({
       <div className="flex h-full items-center justify-center p-2 sm:p-3">
         <div className="flex h-[85vh] min-h-[30rem] max-h-[50rem] w-[90vw] max-w-[72rem] flex-col overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl">
           <div className="flex shrink-0 items-center justify-between gap-4 px-5 py-3">
-            <div className="min-w-0 flex-1">
-              <input
-                type="text"
-                value={title}
-                onChange={(event) => onTitleChange(event.target.value)}
-                className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-border/50 hover:bg-foreground/[0.02] focus:border-border/60 focus:bg-foreground/[0.02]"
-                placeholder="Untitled text file"
-              />
-            </div>
+            <div className="min-w-0 flex-1" />
             <div className="flex shrink-0 items-center gap-1.5">
               <IconButton
                 label="Copy text"
@@ -115,7 +105,7 @@ export function UploadedTextDialog({
               </ActionButton>
               <ActionButton onClick={onReuse}>
                 <WandSparkles className="size-3.5" />
-                Reuse
+                {reuseButtonLabel}
               </ActionButton>
               {dirty ? (
                 <ActionButton onClick={onSave}>

@@ -15,8 +15,8 @@ export function QueueLimitDialog({
     <ModalShell open={open} title="Queue Limit" onClose={onClose}>
       <div className="space-y-5">
         <p className="text-sm leading-6 text-white/72">
-          limit of 100 concurrent queues/ generations reached, please wait for
-          your generations to finish before continuing.
+          You&apos;ve reached the limit of 100 queued or generating items. Wait
+          for some generations to finish before starting more.
         </p>
 
         <div className="flex items-center justify-end">

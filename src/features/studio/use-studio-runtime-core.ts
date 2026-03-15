@@ -12,6 +12,7 @@ import { buildTransferredStudioDraftState } from "./studio-draft-transfer";
 import { normalizeTextReferenceForProvider } from "./studio-text-reference-preparation";
 import {
   canGenerateWithDraft,
+  resolveStudioGenerationRequestMode,
 } from "./studio-generation-rules";
 import { reorderStudioFoldersByIds, sortStudioFoldersByOrder } from "./studio-folder-order";
 import {
@@ -23,6 +24,8 @@ import {
 import {
   buildStudioDraftMap,
   createDraft,
+  createGenerationRunPreviewUrl,
+  createGenerationRunSummary,
   createDraftSnapshot,
   createStudioSeedSnapshot,
   hydrateDraft,
@@ -43,10 +46,17 @@ import {
   revokePreviewUrl,
 } from "./studio-local-runtime-helpers";
 import {
+  findReusableRunIdForLibraryItem,
+  getTextNotePromptBarValue,
+  isTextNoteLibraryItem,
+  resolvePromptBarReuseModelId,
+} from "./studio-library-item-behavior";
+import {
   STUDIO_MODEL_CATALOG,
   STUDIO_MODEL_SECTIONS,
   getStudioModelById,
 } from "./studio-model-catalog";
+import { quoteStudioDraftPricing } from "./studio-model-pricing";
 import {
   getHostedAccessToken,
   getHostedSessionState,
@@ -55,6 +65,7 @@ import {
   subscribeToHostedAuthChanges,
 } from "./studio-hosted-session";
 import type {
+  LocalStudioGenerateResponse,
   LocalStudioGenerateInputDescriptor,
   LocalStudioMutation,
   LocalStudioSnapshotResponse,
@@ -62,6 +73,7 @@ import type {
   LocalStudioUploadManifestEntry,
 } from "./studio-local-api";
 import type {
+  HostedStudioGenerateResponse,
   HostedStudioGenerateInputDescriptor,
   HostedStudioMutation,
   HostedStudioMutationResponse,
@@ -85,6 +97,7 @@ import type {
   StudioVideoInputMode,
   StudioWorkspaceSnapshot,
 } from "./types";
+import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 const EMPTY_PROVIDER_SETTINGS: StudioProviderSettings = {
   falApiKey: "",
@@ -168,6 +181,87 @@ function createEmptyDraftFrameMap() {
       { startFrame: null, endFrame: null } satisfies DraftFrameInputs,
     ])
   ) as Record<string, DraftFrameInputs>;
+}
+
+function createOptimisticRunId() {
+  return `optimistic-${crypto.randomUUID()}`;
+}
+
+function createOptimisticQueuedRun(params: {
+  appMode: StudioAppMode;
+  modelId: string;
+  userId: string;
+  workspaceId: string;
+  draft: StudioDraft;
+}) {
+  const model = getStudioModelById(params.modelId);
+  const persistedDraft = toPersistedDraft(params.draft);
+  const createdAt = new Date().toISOString();
+  const pricingQuote = quoteStudioDraftPricing(model, persistedDraft);
+  const referenceCount = params.draft.references.length;
+  const startFrameCount = params.draft.startFrame ? 1 : 0;
+  const endFrameCount = params.draft.endFrame ? 1 : 0;
+
+  return {
+    id: createOptimisticRunId(),
+    userId: params.userId,
+    workspaceId: params.workspaceId,
+    folderId: null,
+    deletedAt: null,
+    modelId: model.id,
+    modelName: model.name,
+    kind: model.kind,
+    provider: model.provider,
+    requestMode: resolveStudioGenerationRequestMode(model, params.draft),
+    status: "queued",
+    prompt: params.draft.prompt,
+    createdAt,
+    queueEnteredAt: createdAt,
+    startedAt: null,
+    completedAt: null,
+    failedAt: null,
+    cancelledAt: null,
+    updatedAt: createdAt,
+    summary: createGenerationRunSummary(model, params.draft),
+    outputAssetId: null,
+    previewUrl: createGenerationRunPreviewUrl(model, params.draft),
+    errorMessage: null,
+    inputPayload: {
+      prompt: params.draft.prompt,
+      request_mode: resolveStudioGenerationRequestMode(model, params.draft),
+      reference_count: referenceCount,
+      start_frame_count: startFrameCount,
+      end_frame_count: endFrameCount,
+      video_input_mode: persistedDraft.videoInputMode,
+      model_id: model.id,
+      optimistic: true,
+      mode: params.appMode,
+    },
+    inputSettings: {
+      ...persistedDraft,
+      reference_count: referenceCount,
+      start_frame_count: startFrameCount,
+      end_frame_count: endFrameCount,
+    },
+    providerRequestId: null,
+    providerStatus: "queued",
+    estimatedCostUsd: pricingQuote.apiCostUsd,
+    actualCostUsd: null,
+    estimatedCredits: pricingQuote.billedCredits,
+    actualCredits: null,
+    usageSnapshot: {},
+    outputText: null,
+    pricingSnapshot: pricingQuote.pricingSnapshot,
+    dispatchAttemptCount: 0,
+    dispatchLeaseExpiresAt: null,
+    canCancel: true,
+    draftSnapshot: {
+      ...persistedDraft,
+      referenceCount,
+      startFrameCount,
+      endFrameCount,
+    },
+  } satisfies GenerationRun;
 }
 
 async function fetchHostedWithSession(
@@ -400,6 +494,7 @@ async function uploadLocalFiles(
 }
 
 async function queueLocalGenerationRequest(params: {
+  clientRequestId: string;
   modelId: string;
   folderId: string | null;
   draft: PersistedStudioDraft;
@@ -408,6 +503,7 @@ async function queueLocalGenerationRequest(params: {
   signal?: AbortSignal;
 }) {
   const formData = new FormData();
+  formData.set("clientRequestId", params.clientRequestId);
   formData.set("modelId", params.modelId);
   formData.set("draft", JSON.stringify(params.draft));
   formData.set("inputs", JSON.stringify(params.inputs));
@@ -422,7 +518,7 @@ async function queueLocalGenerationRequest(params: {
     credentials: "same-origin",
     signal: params.signal,
   });
-  const payload = (await response.json()) as LocalStudioSnapshotResponse & {
+  const payload = (await response.json()) as LocalStudioGenerateResponse & {
     error?: string;
   };
 
@@ -552,6 +648,7 @@ async function uploadHostedFiles(
 }
 
 async function queueHostedGeneration(params: {
+  clientRequestId: string;
   modelId: string;
   folderId: string | null;
   draft: GenerationRun["draftSnapshot"] | PersistedStudioDraft;
@@ -560,6 +657,7 @@ async function queueHostedGeneration(params: {
   signal?: AbortSignal;
 }) {
   const formData = new FormData();
+  formData.set("clientRequestId", params.clientRequestId);
   formData.set("modelId", params.modelId);
   formData.set("draft", JSON.stringify(params.draft));
   formData.set("inputs", JSON.stringify(params.inputs));
@@ -573,7 +671,7 @@ async function queueHostedGeneration(params: {
     body: formData,
     signal: params.signal,
   });
-  const payload = (await response.json()) as HostedStudioMutationResponse & {
+  const payload = (await response.json()) as HostedStudioGenerateResponse & {
     error?: string;
   };
 
@@ -694,6 +792,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
   const draftReferencesRef = useRef(createEmptyDraftReferenceMap());
   const draftFramesRef = useRef(createEmptyDraftFrameMap());
   const runsRef = useRef(seedSnapshot.generationRuns);
+  const optimisticRunIdByClientRequestRef = useRef(new Map<string, string>());
   const localModeSessionRef = useRef(0);
   const localLatestStartedRequestRef = useRef(0);
   const localLatestAppliedRequestRef = useRef(0);
@@ -706,6 +805,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
   const hostedRevisionRef = useRef(0);
   const hostedSyncIntervalRef = useRef(1400);
   const hostedRequestControllersRef = useRef(new Set<AbortController>());
+  const hostedRealtimeRefreshTimerRef = useRef<number | null>(null);
   const completedCheckoutSessionIdsRef = useRef(new Set<string>());
   const zeroCreditsDialogOpenedRef = useRef(false);
 
@@ -890,6 +990,114 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     [applyHostedState]
   );
 
+  const insertOptimisticRun = useCallback(
+    (clientRequestId: string, optimisticRun: GenerationRun) => {
+      optimisticRunIdByClientRequestRef.current.set(clientRequestId, optimisticRun.id);
+      setRuns((current) => [
+        optimisticRun,
+        ...current.filter((entry) => entry.id !== optimisticRun.id),
+      ]);
+    },
+    []
+  );
+
+  const removeOptimisticRun = useCallback((clientRequestId: string) => {
+    const optimisticRunId =
+      optimisticRunIdByClientRequestRef.current.get(clientRequestId) ?? null;
+    if (!optimisticRunId) {
+      return;
+    }
+
+    optimisticRunIdByClientRequestRef.current.delete(clientRequestId);
+    setRuns((current) => current.filter((entry) => entry.id !== optimisticRunId));
+  }, []);
+
+  const reconcileOptimisticRun = useCallback(
+    (clientRequestId: string | null, nextRun: GenerationRun) => {
+      const optimisticRunId =
+        clientRequestId
+          ? optimisticRunIdByClientRequestRef.current.get(clientRequestId) ?? null
+          : null;
+
+      if (clientRequestId) {
+        optimisticRunIdByClientRequestRef.current.delete(clientRequestId);
+      }
+
+      setRuns((current) => [
+        nextRun,
+        ...current.filter(
+          (entry) => entry.id !== nextRun.id && entry.id !== optimisticRunId
+        ),
+      ]);
+    },
+    []
+  );
+
+  const applyLocalQueuedRunResponse = useCallback(
+    (
+      payload: LocalStudioGenerateResponse,
+      params: { requestId: number; sessionId: number }
+    ) => {
+      if (localModeSessionRef.current !== params.sessionId) {
+        return false;
+      }
+
+      if (payload.revision < localRevisionRef.current) {
+        return false;
+      }
+
+      if (
+        payload.revision === localRevisionRef.current &&
+        params.requestId <= localLatestAppliedRequestRef.current
+      ) {
+        return false;
+      }
+
+      localLatestAppliedRequestRef.current = Math.max(
+        localLatestAppliedRequestRef.current,
+        params.requestId
+      );
+      localRevisionRef.current = Math.max(localRevisionRef.current, payload.revision);
+      reconcileOptimisticRun(payload.clientRequestId, payload.run);
+      return true;
+    },
+    [reconcileOptimisticRun]
+  );
+
+  const applyHostedQueuedRunResponse = useCallback(
+    (
+      payload: HostedStudioGenerateResponse,
+      params: { requestId: number; sessionId: number }
+    ) => {
+      if (hostedModeSessionRef.current !== params.sessionId) {
+        return false;
+      }
+
+      if (payload.revision < hostedRevisionRef.current) {
+        return false;
+      }
+
+      if (
+        payload.revision === hostedRevisionRef.current &&
+        params.requestId <= hostedLatestAppliedRequestRef.current
+      ) {
+        return false;
+      }
+
+      hostedLatestAppliedRequestRef.current = Math.max(
+        hostedLatestAppliedRequestRef.current,
+        params.requestId
+      );
+      hostedRevisionRef.current = Math.max(hostedRevisionRef.current, payload.revision);
+      if (payload.creditBalance) {
+        setCreditBalance(payload.creditBalance);
+      }
+      reconcileOptimisticRun(payload.clientRequestId, payload.run);
+      return true;
+    },
+    [reconcileOptimisticRun]
+  );
+
   useEffect(() => {
     runsRef.current = runs;
   }, [runs]);
@@ -929,6 +1137,10 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     }
     dispatchTimersRef.current.clear();
     completionTimersRef.current.clear();
+    if (hostedRealtimeRefreshTimerRef.current !== null) {
+      window.clearTimeout(hostedRealtimeRefreshTimerRef.current);
+      hostedRealtimeRefreshTimerRef.current = null;
+    }
   }, []);
 
   const abortLocalRequests = useCallback(() => {
@@ -1014,6 +1226,38 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
   const finishHostedRequest = useCallback((controller: AbortController) => {
     hostedRequestControllersRef.current.delete(controller);
   }, []);
+
+  const scheduleHostedRealtimeRefresh = useCallback(() => {
+    if (hostedRealtimeRefreshTimerRef.current !== null) {
+      return;
+    }
+
+    hostedRealtimeRefreshTimerRef.current = window.setTimeout(() => {
+      hostedRealtimeRefreshTimerRef.current = null;
+      const request = beginHostedRequest();
+
+      void fetchHostedSync({
+        sinceRevision: hostedRevisionRef.current,
+        signal: request.controller.signal,
+      })
+        .then((response) => {
+          finishHostedRequest(request.controller);
+          if (response.kind === "noop") {
+            hostedRevisionRef.current = Math.max(
+              hostedRevisionRef.current,
+              response.revision
+            );
+            return;
+          }
+
+          hostedSyncIntervalRef.current = response.syncIntervalMs;
+          applyHostedSyncPayload(response);
+        })
+        .catch(() => {
+          finishHostedRequest(request.controller);
+        });
+    }, 120);
+  }, [applyHostedSyncPayload, beginHostedRequest, finishHostedRequest]);
 
   const applyHostedResponse = useCallback(
     (
@@ -1473,36 +1717,57 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       return;
     }
 
-    const eventsUrl = new URL("/api/studio/hosted/events", window.location.origin);
-    if (hostedRevisionRef.current > 0) {
-      eventsUrl.searchParams.set("sinceRevision", String(hostedRevisionRef.current));
-    }
+    const supabase = getSupabaseBrowserClient();
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    const eventSource = new EventSource(eventsUrl.toString());
-
-    const handleSync = (event: MessageEvent<string>) => {
+    const connect = async () => {
       try {
-        const payload = JSON.parse(event.data) as HostedStudioSyncResponse;
-        applyHostedSyncPayload(payload);
+        const accessToken = await getHostedAccessToken();
+        if (!accessToken || cancelled) {
+          return;
+        }
+
+        supabase.realtime.setAuth(accessToken);
+        channel = supabase
+          .channel(`studio:${profile.id}`, {
+            config: {
+              private: true,
+            },
+          })
+          .on("broadcast", { event: "studio.sync" }, (payload) => {
+            const nextRevision = Number(
+              (payload as { payload?: { revision?: number } }).payload?.revision ?? 0
+            );
+
+            if (!Number.isFinite(nextRevision) || nextRevision <= hostedRevisionRef.current) {
+              return;
+            }
+
+            scheduleHostedRealtimeRefresh();
+          })
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              scheduleHostedRealtimeRefresh();
+            }
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              scheduleHostedRealtimeRefresh();
+            }
+          });
       } catch {
-        // Ignore malformed realtime payloads and keep the stream alive.
+        scheduleHostedRealtimeRefresh();
       }
     };
 
-    const handleError = () => {
-      // EventSource reconnects automatically; keep the last applied state.
-    };
-
-    eventSource.addEventListener("studio-sync", handleSync as EventListener);
-    eventSource.addEventListener("studio-error", handleError as EventListener);
-    eventSource.onerror = handleError;
+    void connect();
 
     return () => {
-      eventSource.removeEventListener("studio-sync", handleSync as EventListener);
-      eventSource.removeEventListener("studio-error", handleError as EventListener);
-      eventSource.close();
+      cancelled = true;
+      if (channel) {
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [appMode, applyHostedSyncPayload, hostedUserSignedIn]);
+  }, [appMode, hostedUserSignedIn, profile.id, scheduleHostedRealtimeRefresh]);
 
   useEffect(() => {
     if (
@@ -1792,29 +2057,30 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     [applyHostedResponse, beginHostedRequest, finishHostedRequest]
   );
 
-  const refreshHostedState = useCallback(() => {
+  const refreshHostedState = useCallback((sinceRevision: number | null = null) => {
     const request = beginHostedRequest();
 
     void fetchHostedSync({
-      sinceRevision: null,
+      sinceRevision,
       signal: request.controller.signal,
     })
       .then((response) => {
         finishHostedRequest(request.controller);
         if (response.kind === "noop") {
+          hostedRevisionRef.current = Math.max(
+            hostedRevisionRef.current,
+            response.revision
+          );
           return;
         }
 
         hostedSyncIntervalRef.current = response.syncIntervalMs;
-        applyHostedResponse(response.state, {
-          requestId: request.requestId,
-          sessionId: request.sessionId,
-        });
+        applyHostedSyncPayload(response);
       })
       .catch(() => {
         finishHostedRequest(request.controller);
       });
-  }, [applyHostedResponse, beginHostedRequest, finishHostedRequest]);
+  }, [applyHostedSyncPayload, beginHostedRequest, finishHostedRequest]);
 
   const surfaceGenerationError = useCallback((message: string) => {
     setGenerationErrorMessage(message);
@@ -2737,13 +3003,38 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
   const reuseItem = useCallback(
     (itemId: string) => {
       const item = items.find((entry) => entry.id === itemId);
-      if (!item?.modelId) return;
+      if (!item) return;
 
-      const matchingRun = runs.find((run) => run.outputAssetId === item.id);
-      if (matchingRun) {
-        reuseRun(matchingRun.id);
+      if (isTextNoteLibraryItem(item)) {
+        const promptText = getTextNotePromptBarValue(item);
+        if (!promptText) {
+          return;
+        }
+
+        const targetModelId = resolvePromptBarReuseModelId({
+          currentModelId: visibleSelectedModelId,
+          models,
+        });
+
+        setSelectedModelIdState(targetModelId);
+        setDraftsByModelId((current) => ({
+          ...current,
+          [targetModelId]: {
+            ...(current[targetModelId] ??
+              toPersistedDraft(createDraft(getStudioModelById(targetModelId)))),
+            prompt: promptText,
+          },
+        }));
         return;
       }
+
+      const matchingRunId = findReusableRunIdForLibraryItem(item, runs);
+      if (matchingRunId) {
+        reuseRun(matchingRunId);
+        return;
+      }
+
+      if (!item.modelId) return;
 
       const nextModel = getStudioModelById(item.modelId);
       const nextVisibleModelId = getVisibleModelId(nextModel.id);
@@ -2782,7 +3073,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         };
       });
     },
-    [getVisibleModelId, items, reuseRun, runs]
+    [getVisibleModelId, items, models, reuseRun, runs, visibleSelectedModelId]
   );
 
   const updateTextItem = useCallback(
@@ -3370,14 +3661,41 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       ...current,
       [nextVisibleModelId]: transferredState.persistedDraft,
     }));
-    setDraftReferencesByModelId((current) => ({
-      ...current,
-      [nextVisibleModelId]: transferredState.references,
-    }));
-    setDraftFramesByModelId((current) => ({
-      ...current,
-      [nextVisibleModelId]: transferredState.frames,
-    }));
+    setDraftReferencesByModelId((current) => {
+      const existingReferences = current[nextVisibleModelId] ?? [];
+      releaseRemovedDraftReferencePreviews(
+        existingReferences,
+        transferredState.references
+      );
+
+      return {
+        ...current,
+        [nextVisibleModelId]: transferredState.references,
+      };
+    });
+    setDraftFramesByModelId((current) => {
+      const existingFrames =
+        current[nextVisibleModelId] ??
+        ({ startFrame: null, endFrame: null } satisfies DraftFrameInputs);
+
+      if (
+        existingFrames.startFrame &&
+        existingFrames.startFrame.id !== transferredState.frames.startFrame?.id
+      ) {
+        releaseDraftReferencePreview(existingFrames.startFrame);
+      }
+      if (
+        existingFrames.endFrame &&
+        existingFrames.endFrame.id !== transferredState.frames.endFrame?.id
+      ) {
+        releaseDraftReferencePreview(existingFrames.endFrame);
+      }
+
+      return {
+        ...current,
+        [nextVisibleModelId]: transferredState.frames,
+      };
+    });
     setSelectedModelIdState(nextVisibleModelId);
   }, [
     currentDraft,
@@ -3421,6 +3739,20 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       return;
     }
 
+    const clientRequestId = crypto.randomUUID();
+    insertOptimisticRun(
+      clientRequestId,
+      createOptimisticQueuedRun({
+        appMode,
+        modelId: selectedModel.id,
+        userId: profile.id,
+        workspaceId:
+          folders[0]?.workspaceId ??
+          (appMode === "hosted" ? "workspace-hosted" : "workspace-local"),
+        draft: currentDraft,
+      })
+    );
+
     if (appMode === "hosted") {
       setGeneratePending(true);
       const request = beginHostedRequest();
@@ -3428,6 +3760,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       void buildHostedGenerationPayload()
         .then((hostedGenerationPayload) =>
           queueHostedGeneration({
+            clientRequestId,
             modelId: selectedModel.id,
             folderId: null,
             draft: createDraftSnapshot(currentDraft),
@@ -3439,7 +3772,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         .then((response) => {
           finishHostedRequest(request.controller);
           setGeneratePending(false);
-          applyHostedResponse(response.state, {
+          applyHostedQueuedRunResponse(response, {
             requestId: request.requestId,
             sessionId: request.sessionId,
           });
@@ -3447,6 +3780,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
         .catch((error) => {
           finishHostedRequest(request.controller);
           setGeneratePending(false);
+          removeOptimisticRun(clientRequestId);
           if (isAbortRequestError(error)) {
             return;
           }
@@ -3485,6 +3819,7 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
     void buildHostedGenerationPayload()
       .then((localGenerationPayload) =>
         queueLocalGenerationRequest({
+          clientRequestId,
           modelId: selectedModel.id,
           folderId: null,
           draft: createDraftSnapshot(currentDraft),
@@ -3496,16 +3831,15 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       .then((response) => {
         finishLocalRequest(request.controller);
         setGeneratePending(false);
-        applyLocalResponse(response.snapshot, {
-          preserveDrafts: true,
+        applyLocalQueuedRunResponse(response, {
           requestId: request.requestId,
-          revision: response.revision,
           sessionId: request.sessionId,
         });
       })
       .catch((error) => {
         finishLocalRequest(request.controller);
         setGeneratePending(false);
+        removeOptimisticRun(clientRequestId);
         if (isAbortRequestError(error)) {
           return;
         }
@@ -3532,17 +3866,21 @@ export function useStudioRuntimeCore(appMode: StudioAppMode) {
       });
   }, [
     appMode,
-    applyLocalResponse,
-    applyHostedResponse,
+    applyLocalQueuedRunResponse,
+    applyHostedQueuedRunResponse,
     beginHostedRequest,
     beginLocalRequest,
     buildHostedGenerationPayload,
     currentDraft,
     finishLocalRequest,
     finishHostedRequest,
+    folders,
     hostedUserSignedIn,
+    insertOptimisticRun,
     openSettingsDialog,
+    profile.id,
     providerSettings,
+    removeOptimisticRun,
     refreshLocalState,
     selectedModel,
     surfaceGenerationError,

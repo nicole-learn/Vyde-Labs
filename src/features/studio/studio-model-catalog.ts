@@ -251,7 +251,6 @@ function createVideoModel(
     acceptedReferenceKinds: config.acceptedReferenceKinds,
     aspectRatioOptions: config.aspectRatioOptions,
     resolutionOptions: config.resolutionOptions,
-    outputFormatOptions: ["mp4"],
     durationOptions: config.durationOptions,
     defaultDraft: {
       ...DEFAULT_VIDEO_DRAFT,
@@ -284,21 +283,20 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     minimumReferenceFiles: 1,
     maxReferenceFiles: 1,
     acceptedReferenceKinds: ["image"],
-    outputFormatOptions: ["png"],
     promptPlaceholder:
-      "Drop an image to remove the background. Optional note here.",
+      "Add an image here to remove the background for it.",
     defaultDraft: {
       outputFormat: "png",
     },
   }),
   createTextModel({
-    id: "claude-opus-4.1",
-    name: "Claude Opus 4.1",
+    id: "claude-opus-4.6",
+    name: "Claude Opus 4.6",
     provider: "anthropic",
     providerLabel: "Anthropic",
     familyId: "claude",
-    apiModelId: "claude-opus-4-1-20250805",
-    maxOutputTokens: 64_000,
+    apiModelId: "claude-opus-4-6",
+    maxOutputTokens: 128_000,
     description:
       "Anthropic's strongest Claude model for deep reasoning, writing, and agentic workflows.",
     heroGradient: "from-violet-300/25 via-fuchsia-300/10 to-transparent",
@@ -310,13 +308,13 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     },
   }),
   createTextModel({
-    id: "claude-sonnet-4",
-    name: "Claude Sonnet 4",
+    id: "claude-sonnet-4.6",
+    name: "Claude Sonnet 4.6",
     provider: "anthropic",
     providerLabel: "Anthropic",
     familyId: "claude",
-    apiModelId: "claude-sonnet-4-20250514",
-    maxOutputTokens: 64_000,
+    apiModelId: "claude-sonnet-4-6",
+    maxOutputTokens: 128_000,
     description:
       "Anthropic's balanced flagship for strong reasoning, coding, and everyday assistant work.",
     heroGradient: "from-indigo-300/25 via-violet-300/10 to-transparent",
@@ -328,21 +326,21 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     },
   }),
   createTextModel({
-    id: "claude-haiku-3.5",
-    name: "Claude Haiku 3.5",
+    id: "claude-haiku-4.5",
+    name: "Claude Haiku 4.5",
     provider: "anthropic",
     providerLabel: "Anthropic",
     familyId: "claude",
-    apiModelId: "claude-3-5-haiku-20241022",
-    maxOutputTokens: 8_192,
+    apiModelId: "claude-haiku-4-5-20251001",
+    maxOutputTokens: 64_000,
     description:
       "Anthropic's fast low-cost model for chat, extraction, and lightweight generation.",
     heroGradient: "from-slate-300/25 via-violet-300/10 to-transparent",
     tags: ["LLM", "Fast", "Affordable"],
     pricing: {
       type: "llm",
-      apiCostUsdPerMillionInputTokens: 0.8,
-      apiCostUsdPerMillionOutputTokens: 4,
+      apiCostUsdPerMillionInputTokens: 1,
+      apiCostUsdPerMillionOutputTokens: 5,
     },
   }),
   createSpeechModel({
@@ -357,8 +355,6 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
       type: "tts",
       apiCostUsdPerThousandCharacters: 0.025,
     },
-    outputFormatOptions: ["wav"],
-    speakingRateOptions: ["0.9x", "1x", "1.1x"],
     defaultDraft: {
       outputFormat: "wav",
       voice: "Default",
@@ -376,13 +372,9 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
       type: "tts",
       apiCostUsdPerThousandCharacters: 0.04,
     },
-    outputFormatOptions: ["mp3"],
-    languageOptions: ["English"],
-    speakingRateOptions: ["0.9x", "1x", "1.1x"],
     defaultDraft: {
       outputFormat: "mp3",
       voice: "Zero Shot",
-      language: "English",
     },
   }),
   createImageModel({
@@ -404,12 +396,12 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     outputFormatOptions: [...COMMON_IMAGE_FORMATS],
   }),
   createTextModel({
-    id: "gemini-3-pro-preview",
-    name: "Gemini 3 Pro",
+    id: "gemini-3.1-pro-preview",
+    name: "Gemini 3.1 Pro",
     provider: "google",
     providerLabel: "Google",
     familyId: "gemini",
-    apiModelId: "gemini-3-pro-preview",
+    apiModelId: "gemini-3.1-pro-preview",
     maxOutputTokens: 64_000,
     description:
       "Google's strongest current Gemini text model for advanced reasoning and complex generation.",
@@ -422,12 +414,12 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     },
   }),
   createTextModel({
-    id: "gemini-3-flash",
+    id: "gemini-3-flash-preview",
     name: "Gemini 3 Flash",
     provider: "google",
     providerLabel: "Google",
     familyId: "gemini",
-    apiModelId: "gemini-3-flash",
+    apiModelId: "gemini-3-flash-preview",
     maxOutputTokens: 64_000,
     description:
       "Google's fast, frontier-class Gemini model with strong latency-to-quality balance.",
@@ -637,9 +629,7 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
       type: "tts",
       apiCostUsdPerThousandCharacters: 0.05,
     },
-    outputFormatOptions: ["wav"],
     voiceOptions: ["Tara", "Leah", "Jess", "Leo"],
-    speakingRateOptions: ["0.9x", "1x", "1.1x"],
     defaultDraft: {
       outputFormat: "wav",
       voice: "Tara",
@@ -664,9 +654,8 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
     minimumReferenceFiles: 1,
     maxReferenceFiles: 1,
     acceptedReferenceKinds: ["image"],
-    outputFormatOptions: ["png"],
     promptPlaceholder:
-      "Drop an image to remove the background. Optional note here.",
+      "Add an image here to remove the background for it.",
     defaultDraft: {
       outputFormat: "png",
     },
@@ -699,7 +688,6 @@ export const STUDIO_MODEL_CATALOG: StudioModelDefinition[] = [
       apiCostUsd: 0.25,
     },
     aspectRatioOptions: [...COMMON_IMAGE_RATIOS],
-    outputFormatOptions: [...COMMON_IMAGE_FORMATS],
   }),
   createVideoModel({
     id: "veo-3.1",
@@ -842,8 +830,8 @@ export const STUDIO_PREFERRED_TEXT_MODEL_BY_FAMILY: Record<
   string
 > = {
   chatgpt: "gpt-5.2",
-  claude: "claude-sonnet-4",
-  gemini: "gemini-3-flash",
+  claude: "claude-sonnet-4.6",
+  gemini: "gemini-3-flash-preview",
 };
 
 export function getStudioTextFamilyLabel(familyId: StudioTextModelFamilyId) {
@@ -874,8 +862,21 @@ export function getStudioModelIds() {
   return STUDIO_MODEL_CATALOG.map((model) => model.id);
 }
 
+export function findStudioModelById(modelId: string) {
+  return STUDIO_MODEL_MAP.get(modelId) ?? null;
+}
+
+export function requireStudioModelById(modelId: string) {
+  const model = findStudioModelById(modelId);
+  if (!model) {
+    throw new Error(`Unknown studio model: ${modelId}`);
+  }
+
+  return model;
+}
+
 export function getStudioModelById(modelId: string) {
-  return STUDIO_MODEL_MAP.get(modelId) ?? STUDIO_MODEL_CATALOG[0];
+  return requireStudioModelById(modelId);
 }
 
 export function sortStudioModelsBySectionAndName(models: StudioModelDefinition[]) {

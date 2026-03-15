@@ -72,6 +72,93 @@ export function AddReferenceButton({
   );
 }
 
+export function BackgroundRemovalInputSurface({
+  acceptTypes,
+  canAdd,
+  onAdd,
+  onPreviewReference,
+  onRemove,
+  reference,
+}: {
+  acceptTypes: string;
+  canAdd: boolean;
+  onAdd: (files: File[]) => void;
+  onPreviewReference: (reference: DraftReference) => void;
+  onRemove: () => void;
+  reference: DraftReference | null;
+}) {
+  const previewKind = reference ? getReferencePreviewKind(reference) : "file";
+  const previewUrl =
+    reference && previewKind !== "file" ? reference.previewUrl : null;
+
+  if (!reference) {
+    return (
+      <label
+        className={cn(
+          "flex min-h-[3.25rem] w-full items-center rounded-xl px-2 py-1 text-sm font-semibold uppercase tracking-[0.12em] transition-colors",
+          canAdd
+            ? "cursor-pointer text-foreground/74 hover:bg-white/[0.04]"
+            : "cursor-not-allowed text-foreground/40"
+        )}
+      >
+        <input
+          type="file"
+          accept={acceptTypes}
+          multiple
+          className="hidden"
+          disabled={!canAdd}
+          onChange={(event) => {
+            onAdd(Array.from(event.target.files ?? []));
+            event.target.value = "";
+          }}
+        />
+        <span>ADD AN IMAGE HERE TO REMOVE THE BACKGROUND FOR IT.</span>
+      </label>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[3.25rem] w-full items-center px-2 py-1">
+      <div
+        className="group relative size-16 shrink-0 overflow-hidden rounded-xl border border-white/[0.08] bg-muted/70 transition-transform duration-200 hover:scale-[1.02]"
+        title={reference.title}
+      >
+        <button
+          type="button"
+          onClick={() => onPreviewReference(reference)}
+          className="absolute inset-0 z-10 cursor-zoom-in rounded-xl outline-none transition focus-visible:ring-2 focus-visible:ring-primary/60"
+          aria-label={`Preview ${reference.title}`}
+        />
+
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewUrl}
+            alt={reference.title}
+            className="size-full object-cover"
+          />
+        ) : (
+          <div className="flex size-full items-center justify-center bg-muted/80">
+            <FileText className="size-4 text-muted-foreground/60" />
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          className="absolute right-0 top-0 z-20 flex size-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity hover:bg-black/85 group-hover:opacity-100 group-focus-within:opacity-100"
+          aria-label={`Remove ${reference.title}`}
+        >
+          <X className="size-3 text-white" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function getReferencePreviewKind(
   reference: Pick<DraftReference, "kind" | "mimeType" | "previewUrl">
 ): ReferencePreviewKind {

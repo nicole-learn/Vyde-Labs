@@ -6,6 +6,7 @@ import {
   STUDIO_MODEL_CATALOG,
   STUDIO_MODEL_SECTIONS,
 } from "../studio-model-catalog";
+import type { DraftReference, StudioDraft } from "../types";
 import { FloatingControlBar } from "./floating-control-bar";
 
 function getTextModel() {
@@ -17,26 +18,57 @@ function getTextModel() {
   return textModel;
 }
 
+function getModelById(modelId: string) {
+  const model = STUDIO_MODEL_CATALOG.find((entry) => entry.id === modelId);
+  if (!model) {
+    throw new Error(`Expected model ${modelId}`);
+  }
+  return model;
+}
+
+function createImageReference(title: string): DraftReference {
+  const file = new File(["image"], title, { type: "image/png" });
+
+  return {
+    id: `reference-${title}`,
+    file,
+    source: "upload",
+    originAssetId: null,
+    title,
+    kind: "image",
+    mimeType: file.type,
+    previewUrl:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Crect width='128' height='128' fill='%232b7fff'/%3E%3C/svg%3E",
+    previewSource: "owned",
+  };
+}
+
 function renderFloatingControlBar(
   prompt = "",
   overrides?: {
     generatePending?: boolean;
     onSavePrompt?: () => void;
     models?: typeof STUDIO_MODEL_CATALOG;
+    modelId?: string;
+    draftPatch?: Partial<StudioDraft>;
   }
 ) {
-  const model = getTextModel();
+  const model = overrides?.modelId
+    ? getModelById(overrides.modelId)
+    : getTextModel();
   const draft = {
     ...createDraft(model),
     prompt,
+    ...(overrides?.draftPatch ?? {}),
   };
   const models =
     overrides?.models ??
-    STUDIO_MODEL_CATALOG.filter(
-      (entry) =>
-        entry.familyId === model.familyId ||
-        entry.id === "nano-banana-2" ||
-        entry.id === "veo-3.1"
+    STUDIO_MODEL_CATALOG.filter((entry) =>
+      model.familyId
+        ? entry.familyId === model.familyId ||
+          entry.id === "nano-banana-2" ||
+          entry.id === "veo-3.1"
+        : entry.id === model.id || entry.id === "nano-banana-2" || entry.id === "veo-3.1"
     );
 
   return render(
@@ -121,5 +153,103 @@ describe("FloatingControlBar", () => {
       "aria-busy",
       "true"
     );
+  });
+
+  it("replaces the textarea with a background-removal instruction surface", () => {
+    renderFloatingControlBar("", {
+      modelId: "bria-rmbg-2",
+      models: STUDIO_MODEL_CATALOG.filter(
+        (entry) => entry.id === "bria-rmbg-2" || entry.id === "nano-banana-2"
+      ),
+    });
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("ADD AN IMAGE HERE TO REMOVE THE BACKGROUND FOR IT.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Prompt" })).not.toBeInTheDocument();
+  });
+
+  it("replaces the background-removal instruction with the selected image thumbnail", () => {
+    renderFloatingControlBar("", {
+      modelId: "bria-rmbg-2",
+      models: STUDIO_MODEL_CATALOG.filter(
+        (entry) => entry.id === "bria-rmbg-2" || entry.id === "nano-banana-2"
+      ),
+      draftPatch: {
+        references: [createImageReference("subject.png")],
+      },
+    });
+
+    expect(
+      screen.queryByText("ADD AN IMAGE HERE TO REMOVE THE BACKGROUND FOR IT.")
+    ).not.toBeInTheDocument();
+    expect(screen.getByAltText("subject.png")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Prompt" })).not.toBeInTheDocument();
+  });
+
+  it("shows the expected controls for every model in the catalog", () => {
+    const controlLabels: Array<{
+      condition: (model: (typeof STUDIO_MODEL_CATALOG)[number]) => boolean;
+      label: string;
+    }> = [
+      { condition: (model) => Boolean(model.aspectRatioOptions), label: "Aspect Ratio" },
+      { condition: (model) => Boolean(model.resolutionOptions), label: "Resolution" },
+      { condition: (model) => Boolean(model.outputFormatOptions), label: "Format" },
+      { condition: (model) => Boolean(model.voiceOptions), label: "Voice" },
+      { condition: (model) => Boolean(model.languageOptions), label: "Language" },
+      { condition: (model) => Boolean(model.speakingRateOptions), label: "Speed" },
+      { condition: (model) => Boolean(model.durationOptions), label: "Duration" },
+      {
+        condition: (model) => model.kind === "video" && model.supportsFrameInputs && model.supportsReferences,
+        label: "Input",
+      },
+      { condition: (model) => model.kind === "video", label: "Audio" },
+    ];
+
+    for (const model of STUDIO_MODEL_CATALOG) {
+      const models =
+        model.kind === "text" && model.familyId
+          ? STUDIO_MODEL_CATALOG.filter(
+              (entry) =>
+                entry.familyId === model.familyId ||
+                entry.id === "nano-banana-2" ||
+                entry.id === "veo-3.1"
+            )
+          : STUDIO_MODEL_CATALOG.filter(
+              (entry) => entry.id === model.id || entry.id === "gpt-5.2"
+            );
+
+      const { unmount } = renderFloatingControlBar(
+        model.requestMode === "background-removal" ? "" : `Prompt for ${model.name}`,
+        {
+          modelId: model.id,
+          models,
+        }
+      );
+
+      expect(screen.getByRole("button", { name: "Select model" })).toBeInTheDocument();
+
+      if (model.kind === "text") {
+        expect(screen.getByRole("button", { name: "Text Model" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Aspect Ratio" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Duration" })).not.toBeInTheDocument();
+      } else if (model.requestMode === "background-removal") {
+        expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByRole("textbox")).toBeInTheDocument();
+      }
+
+      for (const control of controlLabels) {
+        const button = screen.queryByRole("button", { name: control.label });
+        if (control.condition(model)) {
+          expect(button).toBeInTheDocument();
+        } else {
+          expect(button).not.toBeInTheDocument();
+        }
+      }
+
+      unmount();
+    }
   });
 });

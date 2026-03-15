@@ -6,6 +6,8 @@
     "dev": "next dev",
     "dev:local": "next dev",
     "dev:hosted": "NEXT_PUBLIC_TRYPLAYGROUND_APP_MODE=hosted next dev",
+    "trigger:dev": "trigger.dev dev --config ./trigger.config.ts",
+    "trigger:deploy": "trigger.dev deploy --config ./trigger.config.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -42,6 +44,8 @@
     "eslint-config-next": "16.1.6",
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",
+    "@trigger.dev/sdk": "^4.4.3",
+    "trigger.dev": "^4.4.3",
     "typescript": "^5",
     "vitest": "^4.1.0"
   }

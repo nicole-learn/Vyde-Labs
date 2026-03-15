@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, Download, Trash2, WandSparkles, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/cn";
 import type { LibraryItem } from "../../types";
 import {
@@ -18,6 +18,10 @@ import {
   MetaPills,
   splitAssetMetaPills,
 } from "./asset-detail-shared";
+
+function isPointInsideRect(x: number, y: number, rect: DOMRect) {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
 
 function MediaInfoPanel({
   item,
@@ -129,6 +133,20 @@ export function MediaAssetDialog({
   onReuse: () => void;
 }) {
   const metaPills = useMemo(() => splitAssetMetaPills(item.meta), [item.meta]);
+  const imageElementRef = useRef<HTMLImageElement | null>(null);
+
+  const handleImageStageClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (item.kind !== "image") {
+      return;
+    }
+
+    const imageRect = imageElementRef.current?.getBoundingClientRect();
+    if (imageRect && isPointInsideRect(event.clientX, event.clientY, imageRect)) {
+      return;
+    }
+
+    onClose();
+  };
 
   return (
     <div
@@ -145,11 +163,26 @@ export function MediaAssetDialog({
         }
       }}
     >
-      <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-1">
-        <div className="min-h-0 p-2 sm:p-3">
+      <div
+        className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-1"
+        data-asset-dialog-layout
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <div
+          className="min-h-0 p-2 sm:p-3"
+          data-asset-stage-surface
+          onClick={item.kind === "image" ? handleImageStageClick : undefined}
+        >
           <div className="flex h-full min-h-0 items-center justify-center overflow-hidden rounded-xl bg-transparent p-1 sm:p-1.5">
             <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[10px] bg-transparent">
-              <MediaStage item={item} />
+              <MediaStage
+                item={item}
+                imageElementRef={item.kind === "image" ? imageElementRef : undefined}
+              />
             </div>
           </div>
         </div>

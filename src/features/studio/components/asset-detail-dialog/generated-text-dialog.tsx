@@ -3,13 +3,13 @@
 import {
   Copy,
   Download,
-  Save,
   Trash2,
   WandSparkles,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { getLibraryItemReuseButtonLabel } from "../../studio-library-item-behavior";
 import type { LibraryItem } from "../../types";
 import {
   ASSET_DETAIL_DIALOG_LAYER_CLASS,
@@ -40,6 +40,7 @@ function GeneratedTextInfoPanel({
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const metaPills = useMemo(() => splitAssetMetaPills(item.meta), [item.meta]);
   const modelName = getLibraryItemModelName(item) ?? item.title;
+  const reuseButtonLabel = getLibraryItemReuseButtonLabel(item);
 
   return (
     <div
@@ -101,7 +102,7 @@ function GeneratedTextInfoPanel({
           </ActionButton>
           <ActionButton className="flex-1" onClick={onReuse}>
             <WandSparkles className="size-3.5" />
-            Reuse
+            {reuseButtonLabel}
           </ActionButton>
           <ActionButton tone="primary" className="flex-1" onClick={onDownload}>
             <Download className="size-3.5" />
@@ -114,33 +115,23 @@ function GeneratedTextInfoPanel({
 }
 
 export function GeneratedTextDialog({
-  body,
   createdLabel,
-  dirty,
   item,
-  onBodyChange,
   onClose,
   onDelete,
   onDownload,
   onReuse,
-  onSave,
-  onTitleChange,
-  title,
 }: {
-  body: string;
   createdLabel: string;
-  dirty: boolean;
   item: LibraryItem;
-  onBodyChange: (value: string) => void;
   onClose: () => void;
   onDelete: () => void;
   onDownload: () => void;
   onReuse: () => void;
-  onSave: () => void;
-  onTitleChange: (value: string) => void;
-  title: string;
 }) {
   const [copiedOutput, setCopiedOutput] = useState(false);
+  const outputText = item.contentText ?? "";
+  const reuseButtonLabel = getLibraryItemReuseButtonLabel(item);
 
   return (
     <div
@@ -157,39 +148,38 @@ export function GeneratedTextDialog({
       <div className="flex h-full min-h-0 items-center justify-center gap-3 p-2 sm:p-3">
         <div className="flex h-[85vh] min-h-[30rem] max-h-[50rem] w-[90vw] max-w-md flex-col overflow-hidden rounded-2xl bg-background/95 shadow-2xl supports-backdrop-filter:backdrop-blur-xl sm:max-w-lg">
           <div className="flex shrink-0 items-center justify-between gap-4 px-5 py-3">
-            <div className="min-w-0 flex-1">
-              <input
-                type="text"
-                value={title}
-                onChange={(event) => onTitleChange(event.target.value)}
-                className="w-full rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground hover:border-border/50 hover:bg-foreground/[0.02] focus:border-border/60 focus:bg-foreground/[0.02]"
-                placeholder="Untitled"
-              />
+            <div className="min-w-0 flex-1" />
+            <div className="flex shrink-0 items-center gap-1.5">
+              <IconButton
+                label="Copy output"
+                onClick={async () => {
+                  try {
+                    await copyTextToClipboard(outputText);
+                    setCopiedOutput(true);
+                    window.setTimeout(() => setCopiedOutput(false), 1200);
+                  } catch {
+                    setCopiedOutput(false);
+                  }
+                }}
+                disabled={!outputText.trim()}
+              >
+                <Copy className="size-4" />
+              </IconButton>
+              <IconButton label="Close" onClick={onClose}>
+                <X className="size-4" />
+              </IconButton>
             </div>
-            <IconButton
-              label="Copy output"
-              onClick={async () => {
-                try {
-                  await copyTextToClipboard(body.trim());
-                  setCopiedOutput(true);
-                  window.setTimeout(() => setCopiedOutput(false), 1200);
-                } catch {
-                  setCopiedOutput(false);
-                }
-              }}
-              disabled={!body.trim()}
-            >
-              <Copy className="size-4" />
-            </IconButton>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col px-5 pb-5">
-            <textarea
-              value={body}
-              onChange={(event) => onBodyChange(event.target.value)}
-              className="min-h-0 flex-1 resize-none rounded-xl border border-border/50 bg-foreground/[0.02] px-3 py-3 font-mono text-[13px] leading-6 text-foreground outline-none"
-              placeholder="No output returned yet."
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border/50 bg-foreground/[0.02] px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                Output
+              </p>
+              <div className="mt-2 whitespace-pre-wrap font-mono text-[13px] leading-6 text-foreground">
+                {outputText || "No output returned yet."}
+              </div>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <ActionButton
@@ -202,14 +192,8 @@ export function GeneratedTextDialog({
               </ActionButton>
               <ActionButton onClick={onReuse}>
                 <WandSparkles className="size-3.5" />
-                Reuse
+                {reuseButtonLabel}
               </ActionButton>
-              {dirty ? (
-                <ActionButton onClick={onSave}>
-                  <Save className="size-3.5" />
-                  Save Changes
-                </ActionButton>
-              ) : null}
               <ActionButton tone="primary" onClick={onDownload}>
                 <Download className="size-3.5" />
                 Download

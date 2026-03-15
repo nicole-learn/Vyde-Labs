@@ -7,6 +7,7 @@ import { getLocalProviderKeysFromRequest } from "@/server/fal/studio-fal";
 import { queueLocalGeneration } from "@/server/local/local-store";
 import { getProviderKeyLabel, getRequiredProviderKeyForModel } from "@/server/studio/studio-text-providers";
 import {
+  parseOptionalClientRequestId,
   parseLocalGenerateDraft,
   parseLocalGenerateInputs,
   parseOptionalFolderId,
@@ -22,6 +23,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const modelId = parseRequiredModelId(formData.get("modelId"));
     const folderId = parseOptionalFolderId(formData.get("folderId"));
+    const clientRequestId = parseOptionalClientRequestId(
+      formData.get("clientRequestId")
+    );
     const draft: PersistedStudioDraft =
       parseLocalGenerateDraft(formData.get("draft"));
     const inputs: LocalStudioGenerateInputDescriptor[] =
@@ -57,6 +61,7 @@ export async function POST(request: Request) {
         draft,
         inputs,
         uploadedFiles,
+        clientRequestId,
       })
     );
     response.headers.set("Cache-Control", "no-store");

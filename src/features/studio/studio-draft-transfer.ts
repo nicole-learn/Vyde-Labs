@@ -5,11 +5,18 @@ import type {
   PersistedStudioDraft,
   StudioDraft,
   StudioModelDefinition,
+  StudioVideoInputMode,
 } from "./types";
 
 export interface StudioDraftFrameInputs {
   startFrame: DraftReference | null;
   endFrame: DraftReference | null;
+}
+
+interface TransferredStudioDraftState {
+  persistedDraft: PersistedStudioDraft;
+  references: DraftReference[];
+  frames: StudioDraftFrameInputs;
 }
 
 interface BuildTransferredStudioDraftStateParams {
@@ -97,7 +104,7 @@ function getCompatibleFrame(
 
 export function buildTransferredStudioDraftState(
   params: BuildTransferredStudioDraftStateParams
-) {
+): TransferredStudioDraftState {
   const targetDraft = {
     ...createDraft(params.targetModel),
     ...(params.targetPersistedDraft ?? {}),
@@ -147,11 +154,13 @@ export function buildTransferredStudioDraftState(
         ? getCompatibleFrame(params.sourceDraft.endFrame, params.targetModel)
         : null;
 
+      const videoInputMode: StudioVideoInputMode =
+        nextStartFrame || nextEndFrame ? "frames" : "references";
+
       return {
         persistedDraft: {
           ...nextPersistedDraft,
-          videoInputMode:
-            nextStartFrame || nextEndFrame ? "frames" : "references",
+          videoInputMode,
         },
         references: filterCompatibleReferences(params.targetModel, sourceReferences),
         frames: {
@@ -162,10 +171,12 @@ export function buildTransferredStudioDraftState(
     }
 
     if (sourceCanDriveReferenceState) {
+      const videoInputMode: StudioVideoInputMode = "references";
+
       return {
         persistedDraft: {
           ...nextPersistedDraft,
-          videoInputMode: "references",
+          videoInputMode,
         },
         references: filterCompatibleReferences(params.targetModel, [
           ...sourceReferences,
